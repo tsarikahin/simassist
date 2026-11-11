@@ -1,0 +1,385 @@
+
+:root {
+  font-family: Inter, "Segoe UI", Arial, sans-serif;
+  color: #e5e7eb;
+  background: #0c111b;
+}
+
+* {
+  box-sizing: border-box;
+}
+
+body {
+  margin: 0;
+}
+
+button,
+select,
+textarea {
+  font: inherit;
+}
+
+.app-shell {
+  height: 100vh;
+  display: flex;
+  flex-direction: column;
+}
+
+.app-header {
+  height: 58px;
+  display: flex;
+  justify-content: space-between;
+  align-items: center;
+  padding: 0 22px;
+  background: #111827;
+  border-bottom: 1px solid #293244;
+}
+
+.app-brand,
+.app-header-actions {
+  display: flex;
+  align-items: center;
+  gap: 12px;
+}
+
+.app-brand {
+  color: #8ab4ff;
+}
+
+.app-brand strong {
+  color: #f8fafc;
+  font-size: 17px;
+}
+
+.app-version {
+  font-size: 11px;
+  color: #94a3b8;
+}
+
+.status-indicator {
+  color: #86efac;
+  font-size: 12px;
+}
+
+.workspace {
+  display: grid;
+  grid-template-columns: 250px minmax(0, 1fr) 340px;
+  flex: 1;
+  min-height: 0;
+}
+
+.project-panel,
+.assistant-panel {
+  background: #111827;
+  min-height: 0;
+}
+
+.project-panel {
+  border-right: 1px solid #293244;
+}
+
+.assistant-panel {
+  border-left: 1px solid #293244;
+  display: flex;
+  flex-direction: column;
+}
+
+.panel-heading {
+  display: flex;
+  align-items: center;
+  gap: 9px;
+  padding: 15px;
+  font-size: 13px;
+  font-weight: 600;
+  border-bottom: 1px solid #293244;
+}
+
+.workspace-center {
+  display: flex;
+  flex-direction: column;
+  min-width: 0;
+  min-height: 0;
+}
+
+.viewer-panel {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.simulation-viewer {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+  background: #0b1220;
+}
+
+.viewer-toolbar,
+.viewer-footer {
+  display: flex;
+  align-items: center;
+  justify-content: space-between;
+  padding: 12px 16px;
+  color: #94a3b8;
+  font-size: 12px;
+}
+
+.viewer-toolbar {
+  border-bottom: 1px solid #293244;
+}
+
+.viewer-tools {
+  display: flex;
+  gap: 16px;
+}
+
+.viewer-placeholder {
+  flex: 1;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  color: #8293ac;
+  padding: 20px;
+}
+
+.viewer-placeholder h3 {
+  color: #e2e8f0;
+  margin-bottom: 0;
+}
+
+.viewer-placeholder p {
+  font-size: 13px;
+}
+
+.viewer-placeholder span {
+  color: #64748b;
+  font-size: 12px;
+}
+
+.viewer-footer {
+  border-top: 1px solid #293244;
+}
+
+.project-explorer {
+  padding: 16px;
+}
+
+.project-name,
+.tree-item {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.project-name {
+  font-size: 13px;
+  font-weight: 600;
+}
+
+.project-name svg:last-child {
+  margin-left: auto;
+}
+
+.project-tree {
+  margin: 20px 0 32px 12px;
+}
+
+.tree-item {
+  padding: 12px 0;
+  font-size: 13px;
+  color: #a8b5ca;
+}
+
+.solver-settings {
+  border-top: 1px solid #293244;
+  padding-top: 20px;
+}
+
+.solver-settings h4 {
+  font-size: 13px;
+  margin: 0 0 20px;
+}
+
+.solver-settings label {
+  display: block;
+  color: #94a3b8;
+  font-size: 12px;
+  margin-bottom: 8px;
+}
+
+.solver-settings select {
+  width: 100%;
+  margin-bottom: 18px;
+  padding: 10px;
+  color: #e2e8f0;
+  background: #1d293b;
+  border: 1px solid #344155;
+  border-radius: 6px;
+}
+
+.assistant-content {
+  display: flex;
+  flex-direction: column;
+  flex: 1;
+  min-height: 0;
+}
+
+.chat-messages {
+  flex: 1;
+  overflow-y: auto;
+  padding: 16px;
+}
+
+.chat-message {
+  display: flex;
+  align-items: flex-start;
+  gap: 10px;
+  margin-bottom: 20px;
+  font-size: 13px;
+  line-height: 1.6;
+}
+
+.chat-message p {
+  margin: 0;
+}
+
+.chat-message.assistant svg {
+  color: #60a5fa;
+}
+
+.chat-message.user svg {
+  color: #a78bfa;
+}
+
+.chat-input-area {
+  display: flex;
+  align-items: end;
+  gap: 8px;
+  padding: 14px;
+  border-top: 1px solid #293244;
+}
+
+.chat-input-area textarea {
+  flex: 1;
+  min-width: 0;
+  resize: none;
+  padding: 11px;
+  height: 70px;
+  background: #1d293b;
+  border: 1px solid #344155;
+  border-radius: 8px;
+  color: white;
+}
+
+.chat-input-area button {
+  background: #2563eb;
+  color: white;
+  border: 0;
+  border-radius: 8px;
+  padding: 12px;
+  cursor: pointer;
+}
+
+.console-panel {
+  height: 185px;
+  border-top: 1px solid #293244;
+}
+
+.solver-console {
+  height: 100%;
+}
+
+.console-status {
+  margin-left: auto;
+  color: #94a3b8;
+  font-weight: 400;
+}
+
+.console-output {
+  padding: 8px 16px;
+  color: #86efac;
+  font-family: Consolas, monospace;
+  font-size: 12px;
+}
+
+@media (max-width: 1050px) {
+  .workspace {
+    grid-template-columns: 200px minmax(0, 1fr) 280px;
+  }
+}
+
+
+html,
+body,
+#root {
+  width: 100%;
+  height: 100%;
+  margin: 0;
+  overflow: hidden;
+}
+
+.app-shell {
+  height: 100dvh;
+  overflow: hidden;
+}
+
+.project-panel {
+  overflow-y: auto;
+}
+
+.viewer-panel {
+  overflow: hidden;
+}
+
+.simulation-viewer {
+  min-height: 0;
+}
+
+.console-panel {
+  flex-shrink: 0;
+}
+
+.chat-messages {
+  min-height: 0;
+}
+
+
+.vtk-container {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  width: 100%;
+  overflow: hidden;
+}
+
+.vtk-container canvas {
+  display: block;
+}
+
+.viewer-tools {
+  display: flex;
+  align-items: center;
+  gap: 10px;
+}
+
+.viewer-tools button {
+  display: flex;
+  align-items: center;
+  justify-content: center;
+  background: #1d293b;
+  border: 1px solid #344155;
+  border-radius: 6px;
+  padding: 7px 10px;
+  color: #e2e8f0;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.viewer-tools button:hover {
+  background: #334155;
+}
+
