@@ -1,4 +1,3 @@
-
 from fastapi import FastAPI
 
 from simassist.api.routes.health import router as health_router
