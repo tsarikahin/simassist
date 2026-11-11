@@ -1,0 +1,19 @@
+version = 1
+revision = 3
+requires-python = ">=3.12"
+
+[manifest]
+members = [
+    "simassist",
+    "simassist-backend",
+]
+
+[[package]]
+name = "simassist"
+version = "0.1.0"
+source = { virtual = "." }
+
+[[package]]
+name = "simassist-backend"
+version = "0.1.0"
+source = { editable = "backend" }
