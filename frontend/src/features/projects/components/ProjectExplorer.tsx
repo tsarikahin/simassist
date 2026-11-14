@@ -13,7 +13,7 @@ export function ProjectExplorer() {
     <div className="project-explorer">
       <div className="project-name">
         <FolderOpen size={17} />
-        Cantilever Beam
+        Untitled Project
         <ChevronDown size={15} />
       </div>
 

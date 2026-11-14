@@ -16,3 +16,7 @@ data/cache/
 
 .vscode/
 *.log
+
+# SimAssist runtime data
+/data/*
+!/data/.gitkeep

@@ -383,3 +383,84 @@ body,
   background: #334155;
 }
 
+
+.solver-console {
+  display: flex;
+  flex-direction: column;
+  min-height: 0;
+}
+
+.solver-console .panel-heading {
+  flex-shrink: 0;
+}
+
+.solver-console .console-output {
+  flex: 1;
+  min-height: 0;
+  overflow-y: auto;
+  overflow-wrap: anywhere;
+}
+
+.job-create-button {
+  display: inline-flex;
+  align-items: center;
+  gap: 7px;
+  margin-left: 12px;
+  padding: 7px 10px;
+  color: #e2e8f0;
+  background: #1d293b;
+  border: 1px solid #344155;
+  border-radius: 6px;
+  font-size: 12px;
+  cursor: pointer;
+}
+
+.job-create-button:hover:not(:disabled) {
+  background: #334155;
+}
+
+.job-create-button:disabled {
+  opacity: 0.5;
+  cursor: not-allowed;
+}
+
+
+.vtk-container {
+  position: relative;
+  flex: 1;
+  min-height: 0;
+  overflow: hidden;
+}
+
+.vtk-render-surface {
+  position: absolute;
+  inset: 0;
+  width: 100%;
+  height: 100%;
+}
+
+.viewer-empty-state {
+  position: absolute;
+  inset: 0;
+  display: flex;
+  flex-direction: column;
+  align-items: center;
+  justify-content: center;
+  text-align: center;
+  pointer-events: none;
+  color: #94a3b8;
+}
+
+.viewer-empty-state h3 {
+  margin: 0 0 8px;
+  color: #e2e8f0;
+  font-size: 17px;
+}
+
+.viewer-empty-state p {
+  margin: 0;
+  font-size: 13px;
+}
+
+
+
