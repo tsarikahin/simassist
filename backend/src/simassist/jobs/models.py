@@ -1,6 +1,6 @@
-
 from datetime import UTC, datetime
 from enum import StrEnum
+from typing import Any
 from uuid import UUID, uuid4
 
 from pydantic import BaseModel, Field
@@ -25,11 +25,11 @@ class Job(BaseModel):
     project_id: UUID
     type: JobType
     status: JobStatus = JobStatus.QUEUED
-    created_at: datetime = Field(
-        default_factory=lambda: datetime.now(UTC)
-    )
+
+    created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
     finished_at: datetime | None = None
-    input: dict = Field(default_factory=dict)
-    result: dict | None = None
+
+    input: dict[str, Any] = Field(default_factory=dict)
+    result: dict[str, Any] | None = None
     error: str | None = None

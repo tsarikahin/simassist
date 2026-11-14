@@ -4,6 +4,7 @@ from fastapi.middleware.cors import CORSMiddleware
 from simassist.api.routes.artifacts import router as artifacts_router
 from simassist.api.routes.engines import router as engines_router
 from simassist.api.routes.health import router as health_router
+from simassist.api.routes.jobs import router as jobs_router
 
 app = FastAPI(
     title="SimAssist API",
@@ -24,3 +25,4 @@ app.add_middleware(
 app.include_router(health_router)
 app.include_router(engines_router)
 app.include_router(artifacts_router)
+app.include_router(jobs_router)
