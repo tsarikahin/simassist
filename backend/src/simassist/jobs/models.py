@@ -26,6 +26,9 @@ class Job(BaseModel):
     type: JobType
     status: JobStatus = JobStatus.QUEUED
 
+    # Optional dependency on another job.
+    depends_on: UUID | None = None
+
     created_at: datetime = Field(default_factory=lambda: datetime.now(UTC))
     started_at: datetime | None = None
     finished_at: datetime | None = None

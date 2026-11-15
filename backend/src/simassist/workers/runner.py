@@ -4,10 +4,11 @@ import argparse
 import logging
 import time
 from pathlib import Path
+from uuid import UUID
 
 from simassist.core.models.geometry import GeometrySpec
 from simassist.core.models.mesh import MeshRequest
-from simassist.jobs.models import Job, JobType
+from simassist.jobs.models import Job, JobStatus, JobType
 from simassist.jobs.repository import JobRepository
 from simassist.services.factory import create_simulation_service
 from simassist.simulation.visualization.gmsh_preview import (
@@ -38,9 +39,47 @@ class SimulationWorker:
 
         self.poll_interval = poll_interval
 
-    def process_next(self) -> Job | None:
-        """Claim, execute, verify, and finalize one queued job."""
+    def _resolve_mesh_request(self, job: Job) -> MeshRequest:
+        """Resolve a mesh input from a completed geometry job.
 
+        Also supports legacy mesh jobs with geometry_artifact_id.
+        """
+
+        if "geometry_artifact_id" in job.input:
+            return MeshRequest.model_validate(job.input)
+
+        geometry_job_id = UUID(str(job.input["geometry_job_id"]))
+
+        if job.depends_on != geometry_job_id:
+            raise ValueError("Mesh dependency does not match geometry job ID")
+
+        geometry_job = self.repository.get(geometry_job_id)
+
+        if geometry_job.project_id != job.project_id:
+            raise ValueError("Geometry dependency belongs to another project")
+
+        if geometry_job.type != JobType.GEOMETRY_CREATE:
+            raise ValueError("Mesh dependency must be a geometry job")
+
+        if geometry_job.status != JobStatus.COMPLETED:
+            raise ValueError("Geometry dependency is not completed")
+
+        if not geometry_job.result:
+            raise ValueError("Geometry dependency has no result")
+
+        artifact_id = geometry_job.result.get("artifact_id")
+
+        if not artifact_id:
+            raise ValueError("Geometry dependency has no artifact")
+
+        return MeshRequest.model_validate(
+            {
+                "geometry_artifact_id": artifact_id,
+                "settings": job.input["settings"],
+            }
+        )
+
+    def process_next(self) -> Job | None:
         job = self.repository.claim_next()
 
         if job is None:
@@ -79,7 +118,7 @@ class SimulationWorker:
                 result_payload["preview_artifact_id"] = str(preview_artifact_id)
 
             elif job.type == JobType.MESH_GENERATE:
-                request = MeshRequest.model_validate(job.input)
+                request = self._resolve_mesh_request(job)
 
                 result = service.generate_mesh(request)
 
@@ -88,9 +127,21 @@ class SimulationWorker:
             else:
                 raise NotImplementedError(f"Unsupported job type: {job.type}")
 
-            # Verify artifacts before completing the job.
+            # Verify real artifacts before declaring completion.
+            #
+            # The mesh verifier expects a MeshRequest containing
+            # geometry_artifact_id. For dependent jobs we supply
+            # the resolved request to the verifier without changing
+            # the original persisted job input.
+            verification_job = job
+
+            if job.type == JobType.MESH_GENERATE:
+                verification_job = job.model_copy(
+                    update={"input": request.model_dump(mode="json")}
+                )
+
             self.verifier.verify(
-                job=job,
+                job=verification_job,
                 result=result_payload,
             )
 
@@ -105,9 +156,6 @@ class SimulationWorker:
                 error=str(exc),
             )
 
-        # Finalization is outside the execution/verification
-        # exception handler. If database completion fails,
-        # we must not blindly attempt another state transition.
         updated = self.repository.complete(
             job.id,
             result=result_payload,

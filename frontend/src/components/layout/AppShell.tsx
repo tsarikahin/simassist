@@ -74,6 +74,7 @@ export function AppShell() {
 
           <div className="console-panel">
             <SolverConsole
+              projectId={DEMO_PROJECT_ID}
               jobId={activeJobId}
               onPreviewReady={setPreviewArtifactId}
             />

@@ -7,9 +7,14 @@ from uuid import UUID
 
 from simassist.jobs.models import Job, JobStatus
 
+FAILED_DEPENDENCIES = {
+    JobStatus.FAILED,
+    JobStatus.CANCELLED,
+}
+
 
 class JobRepository:
-    """Persistent SQLite job queue."""
+    """Persistent SQLite queue with dependency-aware scheduling."""
 
     def __init__(self, db_path: Path):
         self.db_path = db_path.resolve()
@@ -42,31 +47,49 @@ class JobRepository:
             """)
 
     def submit(self, job: Job) -> Job:
-        """Persist a new queued job."""
         if job.status != JobStatus.QUEUED:
             raise ValueError("New jobs must be queued")
 
         with self._connect() as conn:
-            conn.execute(
-                """
-                INSERT INTO jobs (
-                    id, project_id, status, created_at, payload
-                )
-                VALUES (?, ?, ?, ?, ?)
-                """,
-                (
-                    str(job.id),
-                    str(job.project_id),
-                    job.status.value,
-                    job.created_at.isoformat(),
-                    job.model_dump_json(),
-                ),
-            )
+            self._insert(conn, job)
 
         return job
 
+    def submit_many(self, jobs: list[Job]) -> list[Job]:
+        """Submit related jobs in a single transaction."""
+        if not jobs:
+            return []
+
+        if any(job.status != JobStatus.QUEUED for job in jobs):
+            raise ValueError("New jobs must be queued")
+
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+
+            for job in jobs:
+                self._insert(conn, job)
+
+        return jobs
+
+    @staticmethod
+    def _insert(conn: sqlite3.Connection, job: Job) -> None:
+        conn.execute(
+            """
+            INSERT INTO jobs (
+                id, project_id, status, created_at, payload
+            )
+            VALUES (?, ?, ?, ?, ?)
+            """,
+            (
+                str(job.id),
+                str(job.project_id),
+                job.status.value,
+                job.created_at.isoformat(),
+                job.model_dump_json(),
+            ),
+        )
+
     def get(self, job_id: UUID) -> Job:
-        """Retrieve a job by ID."""
         with self._connect() as conn:
             row = conn.execute(
                 "SELECT payload FROM jobs WHERE id = ?",
@@ -79,7 +102,6 @@ class JobRepository:
         return Job.model_validate_json(row[0])
 
     def list_by_project(self, project_id: UUID) -> list[Job]:
-        """List jobs for a project."""
         with self._connect() as conn:
             rows = conn.execute(
                 """
@@ -93,52 +115,93 @@ class JobRepository:
         return [Job.model_validate_json(row[0]) for row in rows]
 
     def claim_next(self) -> Job | None:
-        """Atomically claim the oldest queued job."""
+        """Atomically claim the oldest runnable queued job.
+
+        Queued jobs with unfinished dependencies are skipped.
+        Failed or missing dependencies propagate failure.
+        """
 
         with self._connect() as conn:
             conn.execute("BEGIN IMMEDIATE")
 
-            row = conn.execute(
+            rows = conn.execute(
                 """
-                SELECT payload
-                FROM jobs
+                SELECT payload FROM jobs
                 WHERE status = ?
                 ORDER BY created_at, rowid
-                LIMIT 1
                 """,
                 (JobStatus.QUEUED.value,),
-            ).fetchone()
+            ).fetchall()
 
-            if row is None:
-                return None
+            for row in rows:
+                job = Job.model_validate_json(row[0])
 
-            job = Job.model_validate_json(row[0])
+                if job.depends_on is not None:
+                    dependency_row = conn.execute(
+                        "SELECT payload FROM jobs WHERE id = ?",
+                        (str(job.depends_on),),
+                    ).fetchone()
 
-            updated = job.model_copy(
-                update={
-                    "status": JobStatus.RUNNING,
-                    "started_at": datetime.now(UTC),
-                }
-            )
+                    dependency = (
+                        Job.model_validate_json(dependency_row[0])
+                        if dependency_row
+                        else None
+                    )
 
-            conn.execute(
-                """
-                UPDATE jobs
-                SET status = ?, payload = ?
-                WHERE id = ? AND status = ?
-                """,
-                (
-                    updated.status.value,
-                    updated.model_dump_json(),
-                    str(job.id),
-                    JobStatus.QUEUED.value,
-                ),
-            )
+                    failure_reason = None
 
-        return updated
+                    if dependency is None:
+                        failure_reason = f"Dependency not found: {job.depends_on}"
+                    elif dependency.project_id != job.project_id:
+                        failure_reason = "Dependency belongs to another project"
+                    elif dependency.status in FAILED_DEPENDENCIES:
+                        failure_reason = (
+                            f"Dependency {dependency.id} "
+                            f"ended with status {dependency.status}"
+                        )
+
+                    if failure_reason:
+                        failed = job.model_copy(
+                            update={
+                                "status": JobStatus.FAILED,
+                                "finished_at": datetime.now(UTC),
+                                "error": failure_reason,
+                            }
+                        )
+                        self._update(conn, failed)
+                        continue
+
+                    if dependency.status != JobStatus.COMPLETED:
+                        continue
+
+                updated = job.model_copy(
+                    update={
+                        "status": JobStatus.RUNNING,
+                        "started_at": datetime.now(UTC),
+                    }
+                )
+
+                self._update(conn, updated)
+                return updated
+
+        return None
+
+    @staticmethod
+    def _update(conn: sqlite3.Connection, job: Job) -> None:
+        conn.execute(
+            """
+            UPDATE jobs
+            SET status = ?, payload = ?
+            WHERE id = ?
+            """,
+            (
+                job.status.value,
+                job.model_dump_json(),
+                str(job.id),
+            ),
+        )
 
     def complete(self, job_id: UUID, result: dict) -> Job:
-        """Mark a running job as completed."""
         return self._finish(
             job_id=job_id,
             status=JobStatus.COMPLETED,
@@ -146,7 +209,6 @@ class JobRepository:
         )
 
     def fail(self, job_id: UUID, error: str) -> Job:
-        """Mark a running job as failed."""
         return self._finish(
             job_id=job_id,
             status=JobStatus.FAILED,
@@ -185,17 +247,6 @@ class JobRepository:
                 }
             )
 
-            conn.execute(
-                """
-                UPDATE jobs
-                SET status = ?, payload = ?
-                WHERE id = ?
-                """,
-                (
-                    updated.status.value,
-                    updated.model_dump_json(),
-                    str(job_id),
-                ),
-            )
+            self._update(conn, updated)
 
         return updated

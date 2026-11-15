@@ -2,102 +2,69 @@
 import { useEffect, useState } from "react";
 import { Terminal } from "lucide-react";
 
-import { getJob, type Job } from "../../../services/jobs";
+import type { Job } from "../../../services/jobs";
+import { subscribeToJob } from "../../../services/jobEvents";
 
 interface SolverConsoleProps {
+  projectId: string;
   jobId: string | null;
   onPreviewReady: (artifactId: string) => void;
 }
 
-const TERMINAL_STATUSES = new Set([
-  "completed",
-  "failed",
-  "cancelled",
-]);
-
 export function SolverConsole({
+  projectId,
   jobId,
   onPreviewReady,
 }: SolverConsoleProps) {
   const [job, setJob] = useState<Job | null>(null);
-  const [error, setError] = useState<string | null>(null);
+  const [connectionError, setConnectionError] =
+    useState<string | null>(null);
 
   useEffect(() => {
     if (!jobId) return;
 
-    let active = true;
-    let inFlight = false;
-    let timer: ReturnType<typeof setTimeout> | null = null;
+    setJob(null);
+    setConnectionError(null);
 
-    async function refresh() {
-      if (!active || inFlight) return;
-
-      inFlight = true;
-
-      try {
-        const updated = await getJob(jobId!);
-
-        if (!active) return;
-
+    const unsubscribe = subscribeToJob(projectId, jobId, {
+      onJob(updated) {
         setJob(updated);
-        setError(null);
+        setConnectionError(null);
+      },
 
-        if (updated.status === "completed") {
+      onEnd(completedJob) {
+        setJob(completedJob);
+        setConnectionError(null);
+
+        if (completedJob.status === "completed") {
           const previewId =
-            updated.result?.preview_artifact_id;
+            completedJob.result?.preview_artifact_id;
 
           if (typeof previewId === "string") {
             onPreviewReady(previewId);
           }
         }
+      },
 
-        if (!TERMINAL_STATUSES.has(updated.status)) {
-          timer = setTimeout(
-            () => void refresh(),
-            1000,
-          );
-        }
-      } catch (err) {
-        if (!active) return;
+      onError(message) {
+        setConnectionError(message);
+      },
+    });
 
-        setError(
-          err instanceof Error
-            ? err.message
-            : "Failed to retrieve job status",
-        );
-
-        // Retry a temporary network failure.
-        timer = setTimeout(
-          () => void refresh(),
-          2000,
-        );
-      } finally {
-        inFlight = false;
-      }
-    }
-
-    void refresh();
-
-    return () => {
-      active = false;
-
-      if (timer !== null) {
-        clearTimeout(timer);
-      }
-    };
-  }, [jobId, onPreviewReady]);
+    return unsubscribe;
+  }, [projectId, jobId, onPreviewReady]);
 
   const currentJob =
     job?.id === jobId ? job : null;
 
-  const status = currentJob?.status.toUpperCase() ??
-    (jobId ? "LOADING" : "IDLE");
+  const status =
+    currentJob?.status.toUpperCase() ??
+    (jobId ? "CONNECTING" : "IDLE");
 
   return (
     <div className="solver-console">
       <div className="panel-heading">
         <Terminal size={16} />
-
         Job Monitor
 
         <span className="console-status">
@@ -122,21 +89,26 @@ export function SolverConsole({
             <p>[status] {currentJob.status}</p>
 
             {currentJob.status === "completed" && (
-              <p>
-                [result] {JSON.stringify(currentJob.result)}
-              </p>
+              <>
+                <p>
+                  [result]{" "}
+                  {JSON.stringify(currentJob.result)}
+                </p>
+              </>
             )}
 
             {currentJob.status === "failed" && (
-              <p>
-                [error] {currentJob.error}
-              </p>
+              <p>[error] {currentJob.error}</p>
+            )}
+
+            {currentJob.status === "cancelled" && (
+              <p>[system] Job cancelled</p>
             )}
           </>
         )}
 
-        {error && (
-          <p>[error] {error}</p>
+        {connectionError && (
+          <p>[connection] {connectionError}</p>
         )}
       </div>
     </div>

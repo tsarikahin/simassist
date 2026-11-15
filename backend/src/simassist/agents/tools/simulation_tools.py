@@ -5,7 +5,10 @@ import math
 from typing import Literal
 from uuid import UUID
 
+from pydantic import ValidationError
+
 from simassist.agents.tools.geometry import GeometryTools
+from simassist.core.models.geometry import GeometrySpec
 from simassist.core.models.mesh import MeshRequest, MeshSettings
 from simassist.jobs.models import JobType
 
@@ -22,9 +25,16 @@ class SimulationTools:
         return json.dumps(
             {
                 "supported": {
-                    "box": ["dx", "dy", "dz"],
+                    "box": ["length", "width", "height"],
                     "cylinder": ["radius", "height"],
                     "sphere": ["radius"],
+                },
+                "aliases": {
+                    "box": {
+                        "dx": "length",
+                        "dy": "width",
+                        "dz": "height",
+                    }
                 },
                 "units": ["mm", "cm", "m", "in"],
                 "constraints": (
@@ -46,28 +56,62 @@ class SimulationTools:
         Args:
             name: Descriptive name for the geometry.
             primitive: Geometry primitive to create.
-            parameters: Required geometric dimensions.
+            parameters: Dimensions of the primitive.
+                Box: length, width, height.
+                Cylinder: radius, height.
+                Sphere: radius.
             units: Length units.
         """
         required = {
-            "box": {"dx", "dy", "dz"},
+            "box": {"length", "width", "height"},
             "cylinder": {"radius", "height"},
             "sphere": {"radius"},
-        }[primitive]
+        }
 
-        if set(parameters) != required:
+        normalized = dict(parameters)
+
+        if primitive == "box":
+            aliases = {
+                "dx": "length",
+                "dy": "width",
+                "dz": "height",
+            }
+
+            for alias, canonical in aliases.items():
+                if alias in normalized:
+                    if canonical in normalized:
+                        return json.dumps(
+                            {
+                                "ok": False,
+                                "error": (
+                                    f"Conflicting parameters: {alias} and {canonical}"
+                                ),
+                            }
+                        )
+
+                    normalized[canonical] = normalized.pop(alias)
+
+        if set(normalized) != required[primitive]:
             return json.dumps(
                 {
                     "ok": False,
-                    "error": (f"{primitive} requires parameters {sorted(required)}"),
+                    "error": (
+                        f"{primitive} requires parameters {sorted(required[primitive])}"
+                    ),
                 }
             )
 
-        if any(not math.isfinite(value) or value <= 0 for value in parameters.values()):
+        if any(
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not math.isfinite(value)
+            or value <= 0
+            for value in normalized.values()
+        ):
             return json.dumps(
                 {
                     "ok": False,
-                    "error": "Dimensions must be positive and finite",
+                    "error": "Dimensions must be positive finite numbers",
                 }
             )
 
@@ -78,7 +122,7 @@ class SimulationTools:
                 "definition": {
                     "source": "primitive",
                     "primitive": primitive,
-                    "parameters": parameters,
+                    "parameters": normalized,
                 },
             }
         )
@@ -114,7 +158,11 @@ class SimulationTools:
             )
 
         if (
-            not math.isfinite(min_size)
+            not isinstance(min_size, (int, float))
+            or not isinstance(max_size, (int, float))
+            or isinstance(min_size, bool)
+            or isinstance(max_size, bool)
+            or not math.isfinite(min_size)
             or not math.isfinite(max_size)
             or min_size <= 0
             or max_size <= 0
@@ -194,6 +242,145 @@ class SimulationTools:
                 "status": job.status.value,
                 "geometry_artifact_id": str(request.geometry_artifact_id),
                 "message": "Mesh generation job submitted",
+            }
+        )
+
+    def create_geometry_and_mesh(
+        self,
+        name: str,
+        primitive: Literal["box", "cylinder", "sphere"],
+        parameters: dict[str, float],
+        units: Literal["mm", "cm", "m", "in"] = "mm",
+        dimension: Literal[2, 3] = 3,
+        min_size: float = 1.0,
+        max_size: float = 5.0,
+    ) -> str:
+        """Create a geometry and automatically mesh it.
+
+        Submit a dependent two-step workflow. The backend waits
+        for geometry completion and resolves the geometry artifact.
+
+        Args:
+            name: Name of the geometry.
+            primitive: box, cylinder, or sphere.
+            parameters: Box uses length/width/height;
+                cylinder uses radius/height; sphere uses radius.
+            units: Geometry length units.
+            dimension: Mesh dimension, 2 or 3.
+            min_size: Minimum mesh size in geometry units.
+            max_size: Maximum mesh size in geometry units.
+        """
+        required = {
+            "box": {"length", "width", "height"},
+            "cylinder": {"radius", "height"},
+            "sphere": {"radius"},
+        }
+
+        normalized = dict(parameters)
+
+        if primitive == "box":
+            aliases = {
+                "dx": "length",
+                "dy": "width",
+                "dz": "height",
+            }
+
+            for alias, canonical in aliases.items():
+                if alias in normalized:
+                    if canonical in normalized:
+                        return json.dumps(
+                            {
+                                "ok": False,
+                                "error": (
+                                    f"Conflicting parameters: {alias} and {canonical}"
+                                ),
+                            }
+                        )
+
+                    normalized[canonical] = normalized.pop(alias)
+
+        if set(normalized) != required[primitive]:
+            return json.dumps(
+                {
+                    "ok": False,
+                    "error": (
+                        f"{primitive} requires parameters {sorted(required[primitive])}"
+                    ),
+                }
+            )
+
+        if any(
+            not isinstance(value, (int, float))
+            or isinstance(value, bool)
+            or not math.isfinite(value)
+            or value <= 0
+            for value in normalized.values()
+        ):
+            return json.dumps(
+                {
+                    "ok": False,
+                    "error": "Dimensions must be positive finite numbers",
+                }
+            )
+
+        try:
+            geometry_spec = GeometrySpec.model_validate(
+                {
+                    "name": name,
+                    "units": units,
+                    "definition": {
+                        "source": "primitive",
+                        "primitive": primitive,
+                        "parameters": normalized,
+                    },
+                }
+            )
+
+            mesh_settings = MeshSettings(
+                dimension=dimension,
+                min_size=min_size,
+                max_size=max_size,
+            )
+
+        except (ValidationError, ValueError) as exc:
+            return json.dumps(
+                {
+                    "ok": False,
+                    "error": str(exc),
+                }
+            )
+
+        geometry_job, mesh_job = self.geometry.job_manager.submit_geometry_mesh(
+            project_id=self.geometry.project_id,
+            geometry_payload=geometry_spec.model_dump(mode="json"),
+            mesh_settings=mesh_settings.model_dump(mode="json"),
+        )
+
+        self.submitted_job_ids.extend(
+            [
+                str(geometry_job.id),
+                str(mesh_job.id),
+            ]
+        )
+
+        return json.dumps(
+            {
+                "ok": True,
+                "message": "Geometry and mesh workflow submitted",
+                "geometry_job_id": str(geometry_job.id),
+                "mesh_job_id": str(mesh_job.id),
+                "status": "queued",
+                "workflow": [
+                    {
+                        "job_id": str(geometry_job.id),
+                        "type": geometry_job.type.value,
+                    },
+                    {
+                        "job_id": str(mesh_job.id),
+                        "type": mesh_job.type.value,
+                        "depends_on": str(geometry_job.id),
+                    },
+                ],
             }
         )
 

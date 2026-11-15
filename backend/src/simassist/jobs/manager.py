@@ -26,6 +26,39 @@ class JobManager:
         )
         return self.repository.submit(job)
 
+    def submit_geometry_mesh(
+        self,
+        project_id: UUID,
+        geometry_payload: dict[str, Any],
+        mesh_settings: dict[str, Any],
+    ) -> tuple[Job, Job]:
+        """Submit an atomic geometry -> mesh workflow."""
+
+        geometry_job = Job(
+            project_id=project_id,
+            type=JobType.GEOMETRY_CREATE,
+            input=geometry_payload,
+        )
+
+        mesh_job = Job(
+            project_id=project_id,
+            type=JobType.MESH_GENERATE,
+            depends_on=geometry_job.id,
+            input={
+                "geometry_job_id": str(geometry_job.id),
+                "settings": mesh_settings,
+            },
+        )
+
+        self.repository.submit_many(
+            [
+                geometry_job,
+                mesh_job,
+            ]
+        )
+
+        return geometry_job, mesh_job
+
     def get(self, job_id: UUID) -> Job:
         return self.repository.get(job_id)
 
