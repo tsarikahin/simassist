@@ -20,6 +20,7 @@ export interface Job {
   started_at: string | null;
   finished_at: string | null;
   input: Record<string, unknown>;
+  depends_on?: string | null;
   result: Record<string, unknown> | null;
   error: string | null;
 }
