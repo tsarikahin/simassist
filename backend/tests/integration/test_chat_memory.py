@@ -18,6 +18,8 @@ class FakeStream:
         self.agent = agent
 
     async def __aiter__(self):
+        if self.agent.empty:
+            return
         yield SimpleNamespace(text="first ")
         self.agent.tools.submitted_job_ids.append(str(uuid4()))
         if self.agent.fail:
@@ -25,7 +27,7 @@ class FakeStream:
         yield SimpleNamespace(text="second")
 
     async def get_final_response(self):
-        return SimpleNamespace(text="first second")
+        return SimpleNamespace(text="" if self.agent.empty else "first second")
 
 
 class FakeAgent:
@@ -33,6 +35,7 @@ class FakeAgent:
         self.tools = tools
         self.closed = False
         self.fail = False
+        self.empty = False
         self.inputs = []
 
     def run(self, messages, stream=False, options=None):
@@ -43,7 +46,7 @@ class FakeAgent:
         async def response():
             if self.fail:
                 raise RuntimeError("private provider error")
-            return SimpleNamespace(text="first second")
+            return SimpleNamespace(text="" if self.empty else "first second")
 
         return response()
 
@@ -160,6 +163,44 @@ def test_failed_stream_after_submission_is_not_completed(api, monkeypatch):
         assert len(json.loads(turn["job_ids"])) == 1
     assert client.post("/api/chat", json=request).status_code == 409
     assert agents[-1].closed
+
+
+@pytest.mark.parametrize("endpoint", ["/api/chat", "/api/chat/stream"])
+@pytest.mark.parametrize("submitted", [False, True])
+def test_empty_model_reply_is_visible_and_does_not_repeat_actions(
+    api, monkeypatch, endpoint, submitted
+):
+    client, store, project, chat, agents = api
+    original = routes.build_simulation_agent
+    job_id = str(uuid4())
+
+    def empty(**kwargs):
+        agent = original(**kwargs)
+        agent.empty = True
+        if submitted:
+            agent.tools.submitted_job_ids.append(job_id)
+        return agent
+
+    monkeypatch.setattr(routes, "build_simulation_agent", empty)
+    request = body(project, chat, "Make it finer")
+    response = client.post(endpoint, json=request)
+    assert response.status_code == 200
+    text = store.messages(project, chat)[-1]["content"]
+    assert text.strip()
+    if submitted:
+        assert job_id in text
+        assert "Job Monitor" in text
+        assert "No jobs were submitted" not in text
+    else:
+        assert "No jobs were submitted" in text
+    assert (
+        text in response.json()["message"]
+        if endpoint == "/api/chat"
+        else "event: done" in response.text
+    )
+    assert client.post(endpoint, json=request).status_code == 200
+    assert len(agents) == 1
+    assert agents[0].closed
 
 
 def test_concurrent_requests_and_interrupted_stream(api):

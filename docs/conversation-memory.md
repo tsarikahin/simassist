@@ -36,7 +36,7 @@ Set these environment variables before starting the API:
 | Variable | Default | Meaning |
 | --- | ---: | --- |
 | `SIMASSIST_CONTEXT_WINDOW_TOKENS` | 16384 | Effective context limit; must match the loaded model |
-| `SIMASSIST_RESPONSE_RESERVE_TOKENS` | 768 | Reserved and requested maximum output tokens |
+| `SIMASSIST_RESPONSE_RESERVE_TOKENS` | 2048 | Reserved and requested maximum output tokens, including provider reasoning tokens |
 | `SIMASSIST_CONTEXT_SAFETY_MARGIN_TOKENS` | 1536 | Headroom for tool results, protocol and estimation error |
 | `SIMASSIST_SUMMARY_MAX_TOKENS` | 512 | Maximum estimated size of summary including its wrapper |
 | `SIMASSIST_AUTO_SUMMARY` | true | Set false to disable automatic summary updates |

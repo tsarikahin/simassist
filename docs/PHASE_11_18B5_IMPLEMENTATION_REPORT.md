@@ -4,6 +4,11 @@ Completed 2026-11-15. Scope: modular instructions and dynamic tools for one
 user-facing MAF agent. No Phase 11.18C, face-picking implementation, simulation
 study, material, boundary-condition, or solver functionality was added.
 
+The subsequent [conversational mesh follow-up fix](REMESH_FOLLOWUP_FIX.md) adds
+general intent continuity, richer tool/parameter descriptions, reasoning-output
+budget handling, and 267 passing tests. The measurements below remain the
+original phase release measurements; the follow-up report includes new results.
+
 ## Audit and integration
 
 - Installed Microsoft Agent Framework core is **1.26.0**, Python **3.14.3** on

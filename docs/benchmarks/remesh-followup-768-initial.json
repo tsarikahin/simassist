@@ -1,0 +1,234 @@
+{
+  "model": "spark-x2.6-4b",
+  "endpoint": "http://127.0.0.1:1235/v1",
+  "temperature": 0,
+  "streaming": true,
+  "method": "Fresh isolated verified annulus per case; real local MAF model rounds and worker. No production projects touched. Creation fixture is deterministic, all edit turns use the LLM.",
+  "cases": [
+    {
+      "case": "exact",
+      "turns": [
+        {
+          "message": "Make it finer.",
+          "modules": [
+            "workspace",
+            "meshing"
+          ],
+          "reasons": [
+            "explicit_meshing",
+            "active_mesh_context"
+          ],
+          "tools_invoked": [],
+          "submitted_job_ids": [],
+          "response": "",
+          "latency_ms": 19633.996499993373,
+          "usage": {
+            "input_token_count": 2395,
+            "output_token_count": 768,
+            "total_token_count": 3163,
+            "completion/reasoning_tokens": 768,
+            "reasoning_output_token_count": 768
+          }
+        },
+        {
+          "message": "Use 0.025\u20130.05 mm.",
+          "modules": [
+            "workspace",
+            "meshing"
+          ],
+          "reasons": [
+            "mesh_parameter_followup",
+            "active_mesh_context"
+          ],
+          "tools_invoked": [
+            "generate_mesh"
+          ],
+          "submitted_job_ids": [
+            "fe61c8c9-005f-4ec9-b02f-55878b1efa2f"
+          ],
+          "response": "Mesh refinement job submitted with triangular elements at 0.025\u20130.05 mm.\n\n- Job ID: `fe61c8c9-005f-4ec9-b02f-55878b1efa2f`\n- Status: queued (asynchronous)\n- Element family: triangular, 2D\n\nJob Monitor execution will confirm completion; mesh versions are created on success.",
+          "latency_ms": 9579.710500023793,
+          "usage": {
+            "input_token_count": 4996,
+            "total_token_count": 5373,
+            "output_token_count": 377,
+            "completion/reasoning_tokens": 236,
+            "reasoning_output_token_count": 236
+          }
+        }
+      ],
+      "clarification_created": false,
+      "no_premature_job": true,
+      "new_jobs": 1,
+      "completed": true,
+      "same_geometry": true,
+      "size_bounds_correct": true,
+      "original_nodes": 1247,
+      "new_nodes": 4622,
+      "passed": true
+    },
+    {
+      "case": "resolution",
+      "turns": [
+        {
+          "message": "The triangles look chunky. I'd like better resolution.",
+          "modules": [
+            "workspace",
+            "meshing"
+          ],
+          "reasons": [
+            "chat_mesh_continuation"
+          ],
+          "tools_invoked": [
+            "generate_mesh"
+          ],
+          "submitted_job_ids": [],
+          "response": "The mesh change is pending a clarification: do you want to keep the current element sizes (0.05\u20130.1 mm) and refine to higher resolution, or specify new size bounds?",
+          "latency_ms": 13956.265199987683,
+          "usage": {
+            "input_token_count": 5157,
+            "total_token_count": 5729,
+            "output_token_count": 572,
+            "completion/reasoning_tokens": 508,
+            "reasoning_output_token_count": 508
+          }
+        },
+        {
+          "message": "Use 0.025\u20130.05 mm.",
+          "modules": [
+            "workspace",
+            "meshing"
+          ],
+          "reasons": [
+            "chat_pending_remesh",
+            "active_mesh_context"
+          ],
+          "tools_invoked": [
+            "generate_mesh"
+          ],
+          "submitted_job_ids": [
+            "52d2a1d9-73ad-4e4b-8a5a-b8ac7611fbf4"
+          ],
+          "response": "Mesh generation job submitted (job `52d2a1d9-73ad-4e4b-8a5a-b8ac7611fbf4`), 2D triangular family, element sizes 0.025\u20130.05 mm. It is queued; use Job Monitor for completion.",
+          "latency_ms": 11271.474300010595,
+          "usage": {
+            "input_token_count": 5091,
+            "total_token_count": 5531,
+            "output_token_count": 440,
+            "completion/reasoning_tokens": 322,
+            "reasoning_output_token_count": 322
+          }
+        }
+      ],
+      "clarification_created": true,
+      "no_premature_job": true,
+      "new_jobs": 1,
+      "completed": true,
+      "same_geometry": true,
+      "size_bounds_correct": true,
+      "original_nodes": 1247,
+      "new_nodes": 4622,
+      "passed": true
+    },
+    {
+      "case": "density",
+      "turns": [
+        {
+          "message": "Can you back off the density? This is more detail than I need.",
+          "modules": [
+            "workspace",
+            "meshing"
+          ],
+          "reasons": [
+            "chat_mesh_continuation"
+          ],
+          "tools_invoked": [],
+          "submitted_job_ids": [],
+          "response": "",
+          "latency_ms": 19494.30159997428,
+          "usage": {
+            "input_token_count": 2407,
+            "output_token_count": 768,
+            "total_token_count": 3175,
+            "completion/reasoning_tokens": 768,
+            "reasoning_output_token_count": 768
+          }
+        },
+        {
+          "message": "Use 0.1\u20130.2 mm.",
+          "modules": [
+            "workspace",
+            "meshing"
+          ],
+          "reasons": [
+            "mesh_parameter_followup",
+            "active_mesh_context"
+          ],
+          "tools_invoked": [
+            "get_active_geometry",
+            "generate_mesh"
+          ],
+          "submitted_job_ids": [
+            "4164e8da-2386-41ed-88af-3a3f51fbb60f"
+          ],
+          "response": "Mesh generation job submitted with triangular elements at 0.1\u20130.2 mm. Job ID `4164e8da-2386-41ed-88af-3a3f51fbb60f`, status queued \u2014 it will run asynchronously; use Job Monitor for completion.",
+          "latency_ms": 14306.559099990409,
+          "usage": {
+            "input_token_count": 7656,
+            "total_token_count": 8209,
+            "output_token_count": 553,
+            "completion/reasoning_tokens": 432,
+            "reasoning_output_token_count": 432
+          }
+        }
+      ],
+      "clarification_created": false,
+      "no_premature_job": true,
+      "new_jobs": 1,
+      "completed": true,
+      "same_geometry": true,
+      "size_bounds_correct": true,
+      "original_nodes": 1247,
+      "new_nodes": 350,
+      "passed": true
+    },
+    {
+      "case": "recover_false_claim",
+      "turns": [
+        {
+          "message": "Use 0.025\u20130.05 mm.",
+          "modules": [
+            "workspace",
+            "meshing"
+          ],
+          "reasons": [
+            "mesh_parameter_followup",
+            "active_mesh_context"
+          ],
+          "tools_invoked": [],
+          "submitted_job_ids": [],
+          "response": "",
+          "latency_ms": 18687.681099982,
+          "usage": {
+            "input_token_count": 2461,
+            "output_token_count": 768,
+            "total_token_count": 3229,
+            "completion/reasoning_tokens": 768,
+            "reasoning_output_token_count": 768
+          }
+        }
+      ],
+      "new_jobs": 0,
+      "completed": true,
+      "same_geometry": true,
+      "size_bounds_correct": false,
+      "original_nodes": 1247,
+      "new_nodes": null,
+      "passed": false
+    }
+  ],
+  "passed": 3,
+  "total": 4,
+  "response_reserve_tokens": 768,
+  "evaluation_note": "Initial pass flags checked final job correctness, not visibility of intermediate replies. Empty intermediate replies are failures of conversation quality; the final harness additionally checks visibility."
+}

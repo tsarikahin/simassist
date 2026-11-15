@@ -195,6 +195,24 @@ class ChatExecution:
             submitted_job_ids=json.loads(self.cached["job_ids"]),
         )
 
+    def response_text(self, response):
+        text = response.text or ""
+        if text.strip():
+            return text
+        logger.warning(
+            "agent_empty_reply request=%s submitted_job_count=%s",
+            self.request.request_id,
+            len(self.tools.submitted_job_ids),
+        )
+        if self.tools.submitted_job_ids:
+            return (
+                "Submitted jobs: "
+                + ", ".join(self.tools.submitted_job_ids)
+                + ". The model did not return a final explanation. "
+                "Check Job Monitor before requesting another submission."
+            )
+        return "I couldn't complete a reply. No jobs were submitted. Please try again."
+
     def finish(self, status, text=None, usage=None):
         if self.finished:
             return
@@ -250,11 +268,10 @@ async def chat(
         response = await execution.agent.run(
             execution.messages, options=execution.options
         )
-        execution.finish(
-            "completed", response.text or "", getattr(response, "usage_details", None)
-        )
+        text = execution.response_text(response)
+        execution.finish("completed", text, getattr(response, "usage_details", None))
         return ChatResponse(
-            message=response.text or "",
+            message=text,
             submitted_job_ids=execution.tools.submitted_job_ids,
         )
     except asyncio.CancelledError:
@@ -308,9 +325,8 @@ async def stream_chat(
                     reported_jobs.update(new_jobs)
                     yield sse_event("jobs", {"job_ids": new_jobs})
             final = await stream.get_final_response()
-            execution.finish(
-                "completed", final.text or "", getattr(final, "usage_details", None)
-            )
+            text = execution.response_text(final)
+            execution.finish("completed", text, getattr(final, "usage_details", None))
             remaining = [
                 j for j in execution.tools.submitted_job_ids if j not in reported_jobs
             ]
@@ -319,7 +335,7 @@ async def stream_chat(
             yield sse_event(
                 "done",
                 {
-                    "message": final.text or "",
+                    "message": text,
                     "submitted_job_ids": execution.tools.submitted_job_ids,
                 },
             )

@@ -27,10 +27,25 @@ No router invokes a model or submits a job. Tool availability grants no authorit
    the benchmark against the frozen pre-phase instructions and schemas.
 
 Workspace capabilities and the clarification-only request_capability helper are
-always available. The helper reports a missing domain without loading tools,
-executing jobs, or retrying anything. The user supplies a clarified next turn,
-which is routed anew. Automatic expansion/replay count is zero. Do not introduce
+always available. The helper distinguishes loaded, supported-but-unloaded, and
+unknown domain labels, accepting operation aliases such as remeshing. Unknown
+labels are not proof of a product limitation. It never loads tools, executes jobs
+or retries anything. Missing capabilities take a clarified next turn, which is
+routed anew. Automatic expansion/replay count is zero. Do not introduce
 a retry of the original message after any mutating tool has run.
+
+Routing keeps up to four completed chat-local user turns as bounded intent hints.
+Parameter-only replies and unfamiliar wording can retain the relevant module;
+the LLM interprets the current message using actual dialogue. A new explicit
+domain ends the previous task. Selected project meshes alone do not transfer
+numeric-reply intent into another chat. Availability is never authorization.
+
+MAF tool(bound_method) reads function docstrings and Annotated parameters with
+Pydantic Field descriptions, as its @tool decorator does. Use these descriptions
+to distinguish new actions, inspection and approval; include actual supported
+dimensions, families, units and missing-parameter behavior. Keep service methods
+callable for backend callers. Composition budgets these schemas, and integration
+tests inspect the actual schemas sent by MAF, including parameter descriptions.
 
 The selections module currently supplies inspection guidance and explicit limits;
 this repository has no agent face-picking or persistent named-selection methods.

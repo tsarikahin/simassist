@@ -127,7 +127,38 @@ def test_registry_dependencies_order_bridges_and_compatibility():
         ]
     }
     for schema in baseline:
-        assert current[schema["function"]["name"]] == schema
+        # Descriptions may improve; names, defaults, types and required fields
+        # must stay compatible with the frozen pre-refactor schemas.
+        def without_descriptions(value):
+            if isinstance(value, dict):
+                return {
+                    key: without_descriptions(item)
+                    for key, item in value.items()
+                    if key != "description"
+                }
+            if isinstance(value, list):
+                return [without_descriptions(item) for item in value]
+            return value
+
+        assert without_descriptions(
+            current[schema["function"]["name"]]
+        ) == without_descriptions(schema)
+
+
+def test_mesh_schema_descriptions_explain_actions_and_parameters():
+    services = SimulationTools(GeometryTools(None, uuid4()))
+    schema = tool(services.generate_mesh).to_json_schema_spec()["function"]
+    assert "new mesh version" in schema["description"]
+    properties = schema["parameters"]["properties"]
+    assert "clarification" in properties["min_size"]["description"]
+    assert "no pending proposal" in properties["max_size"]["description"]
+    assert "triangular/quadrilateral" in properties["element_family"]["description"]
+    assert "infer" in properties["dimension"]["description"]
+    confirmation = tool(services.confirm_remesh).to_json_schema_spec()["function"]
+    assert (
+        "stored proposal"
+        in confirmation["parameters"]["properties"]["confirmed"]["description"]
+    )
     with pytest.raises(ValueError, match="Unknown agent module"):
         REGISTRY.resolve(("simulation",))
 
@@ -406,3 +437,90 @@ def test_upload_followup_uses_project_owned_metadata_not_display_instructions(
     with files.workspace._connect() as db:
         db.execute("DELETE FROM project_files WHERE file_id=?", (str(file_id),))
     assert snapshot(e).recent_attachment_formats == ()
+
+
+def test_numeric_remesh_replies_keep_chat_local_tools_across_corrections(engineering):
+    e = engineering
+    e.store.append(e.project, e.chat, "user", "Make it finer.")
+    e.store.append(
+        e.project, e.chat, "assistant", "Please provide smaller min/max sizes."
+    )
+    initial_jobs = len(e.manager.list_by_project(e.project))
+    first = compose("Use 0.025–0.05 mm.", snapshot(e), e.services)
+    assert "mesh_parameter_followup" in first.routing.reasons
+    assert not first.routing.clarification_required
+    tools = {fn.__name__: fn for fn in first.tools}
+    # Explicit sizes work even though no persistent proposal was created.
+    assert not snapshot(e).pending_remesh
+    result = json.loads(
+        tools["generate_mesh"](
+            min_size=0.025, max_size=0.05, element_family="triangular"
+        )
+    )
+    assert result["ok"]
+    assert len(e.manager.list_by_project(e.project)) == initial_jobs + 1
+    job = e.manager.get(UUID(result["job_id"]))
+    assert job.input["settings"]["min_size"] == 0.025
+    assert job.input["settings"]["max_size"] == 0.05
+    assert job.input["geometry_artifact_id"] == e.geometry.result["artifact_id"]
+    e.store.append(e.project, e.chat, "user", "Use 0.025–0.05 mm.")
+    e.store.append(e.project, e.chat, "assistant", "Queued the new mesh version.")
+    repeated = compose("Actually use 0.02–0.04 mm.", snapshot(e), e.services)
+    assert "meshing" in repeated.modules
+    assert not repeated.routing.clarification_required
+    # A failed/current turn and another chat's messages never provide routing intent.
+    failed = uuid4()
+    e.store.begin_turn(e.project, e.chat, failed, "Create a box")
+    e.store.finish_turn(failed, "failed", None, [])
+    current = uuid4()
+    e.store.begin_turn(e.project, e.chat, current, "Use 0.02–0.04 mm.")
+    assert "meshing" in compose("Use 0.02–0.04 mm.", snapshot(e), e.services).modules
+    e.store.finish_turn(current, "interrupted", None, [])
+    other = UUID(e.store.new_chat(e.project)["id"])
+    assert (
+        "meshing"
+        not in compose("Use 0.025–0.05 mm.", snapshot(e, other), e.services).modules
+    )
+    e.store.append(e.project, e.chat, "user", "Create a box")
+    e.store.append(e.project, e.chat, "assistant", "Which dimensions?")
+    assert (
+        "meshing" not in compose("Use 0.025–0.05 mm.", snapshot(e), e.services).modules
+    )
+    assert len(e.store.recent_context_users(e.project, e.chat)) <= 4
+    with pytest.raises(ValueError):
+        e.store.recent_context_users(e.project, e.chat, limit=50)
+
+
+@pytest.mark.parametrize(
+    "alias", ["remesh", "remeshing", "mesh", "Mesh Refinement", "mesh-generation"]
+)
+def test_capability_aliases_do_not_report_supported_remeshing_as_unavailable(
+    engineering, alias
+):
+    e = engineering
+    loaded = compose("Make it finer.", snapshot(e), e.services)
+    before = len(e.manager.list_by_project(e.project))
+    answer = json.loads(loaded.request_capability(alias))
+    assert answer["supported_domain"]
+    assert answer["selected_domain"]
+    assert not answer["clarification_required"]
+    assert answer["automatic_retries"] == 0
+    assert "already loaded" in answer["message"]
+    unloaded = compose("Hello", snapshot(e), e.services)
+    answer = json.loads(unloaded.request_capability(alias))
+    assert answer["supported_domain"]
+    assert not answer["selected_domain"]
+    assert answer["clarification_required"]
+    assert len(e.manager.list_by_project(e.project)) == before
+
+
+def test_absent_proposal_guides_new_refinement_without_submitting(engineering):
+    e = engineering
+    before = len(e.manager.list_by_project(e.project))
+    pending = json.loads(e.services.get_pending_remesh())
+    assert not pending["ok"]
+    assert "generate_mesh" in pending["message"]
+    confirmation = json.loads(e.services.confirm_remesh(True))
+    assert not confirmation["ok"]
+    assert "generate_mesh" in confirmation["error"]
+    assert len(e.manager.list_by_project(e.project)) == before

@@ -22,6 +22,7 @@ class RoutingContext:
     attachment_formats: tuple[str, ...] = ()
     recent_attachment_formats: tuple[str, ...] = ()
     recent_intent: str = ""
+    recent_intents: tuple[str, ...] = ()
     issues: tuple[str, ...] = ()
 
 
@@ -34,10 +35,13 @@ def resolve_context(
 ) -> RoutingContext:
     # Applies even to legacy requests without a chat. Deleted projects retain jobs.
     recent = ""
+    recent_intents: tuple[str, ...] = ()
     recent_formats: tuple[str, ...] = ()
     if chat_id:
-        previous_user = store.latest_context_user(project_id, chat_id)
+        recent_users = store.recent_context_users(project_id, chat_id)
+        previous_user = recent_users[0] if recent_users else None
         recent = previous_user["content"][:1000] if previous_user else ""
+        recent_intents = tuple(item["content"][:1000] for item in recent_users)
         # Resolve references through project ownership again, rather than routing
         # on a filename pasted in dialogue. Missing uploads are merely stale hints.
         if previous_user:
@@ -109,6 +113,7 @@ def resolve_context(
         attachment_formats=tuple(str(item["format"]).lower() for item in attachments),
         recent_attachment_formats=recent_formats,
         recent_intent=recent,
+        recent_intents=recent_intents,
         issues=tuple(issues),
     )
 

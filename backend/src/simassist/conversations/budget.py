@@ -16,7 +16,8 @@ def estimate(text: str) -> int:
 @dataclass(frozen=True)
 class ContextBudget:
     window: int = 16384
-    response: int = 768
+    # Reasoning-enabled local models spend this allowance on thought tokens too.
+    response: int = 2048
     safety: int = 1536
     summary: int = 512
     auto_summary: bool = True
@@ -25,7 +26,7 @@ class ContextBudget:
     def from_env(cls):
         return cls(
             window=int(os.getenv("SIMASSIST_CONTEXT_WINDOW_TOKENS", "16384")),
-            response=int(os.getenv("SIMASSIST_RESPONSE_RESERVE_TOKENS", "768")),
+            response=int(os.getenv("SIMASSIST_RESPONSE_RESERVE_TOKENS", "2048")),
             safety=int(os.getenv("SIMASSIST_CONTEXT_SAFETY_MARGIN_TOKENS", "1536")),
             summary=int(os.getenv("SIMASSIST_SUMMARY_MAX_TOKENS", "512")),
             auto_summary=os.getenv("SIMASSIST_AUTO_SUMMARY", "true").lower()

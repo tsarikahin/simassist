@@ -11,7 +11,7 @@ from simassist.conversations.budget import estimate
 
 from .context import RoutingContext, context_metadata
 from .registry import REGISTRY, AgentTool, ModuleRegistry, instructions
-from .router import RoutingDecision, route
+from .router import RoutingDecision, canonical_domain, route
 from .tools.simulation_tools import SimulationTools
 
 logger = logging.getLogger(__name__)
@@ -32,19 +32,29 @@ class AgentComposition:
     def request_capability(self, domain: str) -> str:
         """Report a missing capability and ask the user to clarify; never execute or replay actions."""
         self.route_misses += 1
-        supported = domain in REGISTRY.modules
+        canonical = canonical_domain(domain)
+        supported = canonical in REGISTRY.modules
+        loaded = canonical in self.modules
         logger.info(
             "agent_route_miss supported=%s selected_modules=%s", supported, self.modules
         )
         return json.dumps(
             {
-                "ok": False,
-                "clarification_required": True,
+                "ok": loaded,
+                "clarification_required": not loaded,
                 "supported_domain": supported,
+                "selected_domain": loaded,
                 "automatic_retries": 0,
-                "message": "Ask which supported operation the user wants next. Do not repeat submitted actions."
-                if supported
-                else "This capability is unavailable. Explain the limitation and ask for a supported task.",
+                "message": (
+                    "This domain is already loaded. Use its exposed tools for the current request. "
+                    "Do not repeat submitted actions."
+                    if loaded
+                    else "This domain is supported but not loaded for this turn. Ask which operation "
+                    "the user intends next. Do not repeat submitted actions."
+                    if supported
+                    else "No domain matches this label. That alone does not establish that an operation "
+                    "is unsupported. Ask a targeted clarification using the known capability limits."
+                ),
             }
         )
 

@@ -170,6 +170,17 @@ def test_configuration_and_schema_overhead(monkeypatch):
     assert result.tokens <= ContextBudget().available
 
 
+def test_reasoning_response_reserve_is_budgeted_and_remains_configurable(monkeypatch):
+    monkeypatch.delenv("SIMASSIST_RESPONSE_RESERVE_TOKENS", raising=False)
+    default = ContextBudget.from_env()
+    assert default.response == 2048
+    assert default.available + default.response + default.safety == default.window
+    monkeypatch.setenv("SIMASSIST_RESPONSE_RESERVE_TOKENS", "1024")
+    override = ContextBudget.from_env()
+    assert override.response == 1024
+    assert override.available == default.available + 1024
+
+
 def test_additive_migration_preserves_legacy_rows(tmp_path):
     import sqlite3
 

@@ -13,6 +13,55 @@ ALIASES = {
 }
 UNSUPPORTED = r"\b(solver|solve|simulation|simulate|material|materials|boundary condition|boundary conditions|loads|stress|displacement)\b"
 FOLLOWUP = r"\b(yes|no|keep|same|confirm|cancel|reject|approve|sizes)\b"
+NUMBER = r"(?:\d+(?:\.\d*)?|\.\d+)(?:e[+-]?\d+)?"
+DOMAIN_ALIASES = {
+    "mesh": "meshing",
+    "remesh": "meshing",
+    "remeshing": "meshing",
+    "mesh_generation": "meshing",
+    "mesh_refinement": "meshing",
+}
+WORKSPACE_ONLY = (
+    r"\b(jobs?|status|completed|running|queued|failed|project|conversation|chat)\b"
+)
+SOCIAL = r"^(?:hello|hi|hey|thanks|thank you|bye|goodbye)[\s.!]*$"
+
+
+def canonical_domain(name: str) -> str:
+    normalized = re.sub(r"[\s-]+", "_", name.strip().lower())
+    return DOMAIN_ALIASES.get(normalized, normalized)
+
+
+def size_reply(text: str) -> bool:
+    """Parameter-shaped reply, not a command or authorization by itself."""
+    return bool(
+        re.search(NUMBER, text)
+        and (
+            re.search(rf"{NUMBER}\s*(?:[–—-]|\bto\b)\s*{NUMBER}", text)
+            or re.search(rf"{NUMBER}\s*(?:mm|cm|m|in)\b", text)
+            or re.search(r"\b(min_size|max_size|minimum|maximum|sizes?)\b", text)
+        )
+        and not re.search(
+            r"\b(radius|radii|diameter|width|height|length|thickness)\b",
+            text,
+        )
+    )
+
+
+def recent_mesh_intent(context: RoutingContext) -> bool:
+    # A new explicit domain ends the previous task. Unrecognized wording in a
+    # bounded chat-local continuation must not hide tools from the LLM, which
+    # interprets intent using the actual dialogue. This never authorizes actions.
+    history = context.recent_intents or (context.recent_intent,)
+    for message in history:
+        if re.search(r"\b(do not|don't|never)\b|" + UNSUPPORTED, message.lower()):
+            return False
+        previous = signals(message)
+        if previous:
+            return previous == {"meshing"} or (
+                "meshing" in previous and context.has_completed_mesh
+            )
+    return False
 
 
 @dataclass(frozen=True)
@@ -50,6 +99,9 @@ def route(message: str, context: RoutingContext) -> RoutingDecision:
         domains.clear()
     reasons = [f"explicit_{name}" for name in sorted(domains)]
     unsupported = bool(re.search(UNSUPPORTED, text))
+    continuation = not (
+        unsupported or re.search(WORKSPACE_ONLY, text) or re.fullmatch(SOCIAL, text)
+    )
     if unsupported and not re.search(
         r"\b(geometry|cad|annulus|disk|box|sphere|cylinder|rectangle|square|boolean|primitive|import)\b",
         text,
@@ -95,9 +147,19 @@ def route(message: str, context: RoutingContext) -> RoutingDecision:
         reasons.append("uploaded_mesh_workflow")
     if context.attachment_formats and "meshing" in domains:
         domains.add("geometry")
-    if context.pending_remesh and re.search(FOLLOWUP, text):
+    if context.pending_remesh and (
+        re.search(FOLLOWUP, text) or (not domains and continuation)
+    ):
         domains.add("meshing")
         reasons.append("chat_pending_remesh")
+    if (
+        not domains
+        and not unsupported
+        and size_reply(text)
+        and (context.pending_remesh or recent_mesh_intent(context))
+    ):
+        domains.add("meshing")
+        reasons.append("mesh_parameter_followup")
     if "meshing" in domains and (
         context.selected_mesh_job_id or context.has_completed_mesh
     ):
@@ -109,6 +171,17 @@ def route(message: str, context: RoutingContext) -> RoutingDecision:
         if re.search(r"\b(yes|no|confirm|approve|keep|cancel)\b", text):
             reasons.append("no_pending_confirmation")
             clarification = True
+        elif (
+            continuation
+            and recent_mesh_intent(context)
+            and not re.search(
+                r"\b(radius|radii|diameter|width|height|length|thickness|do not|don't|never)\b",
+                text,
+            )
+        ):
+            domains.add("meshing")
+            reasons.append("chat_mesh_continuation")
+            fallback = True
         elif re.search(r"\b(it|this|that|same|again)\b", text) and not unsupported:
             previous = signals(context.recent_intent)
             # Context can expose tools, but never authorizes repeating an action.

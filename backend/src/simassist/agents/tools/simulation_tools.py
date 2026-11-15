@@ -3,10 +3,10 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
-from typing import Any, Literal
+from typing import Annotated, Any, Literal
 from uuid import UUID
 
-from pydantic import ValidationError
+from pydantic import Field, ValidationError
 
 from simassist.agents.tools.geometry import GeometryTools
 from simassist.core.models.geometry import GeometrySpec, PrimitiveGeometry
@@ -215,13 +215,16 @@ class SimulationTools:
         parameters: dict[str, float],
         units: LengthUnitName = "mm",
     ) -> str:
-        """Submit a geometry creation job.
+        """Create a new primitive geometry without meshing it.
+
+        Use generate_mesh to mesh existing geometry; use the combined creation
+        tool when the user asks for both a new primitive and a mesh.
 
         Args:
             name: Descriptive geometry name.
-            primitive: Box, cylinder, or sphere.
-            parameters: Box uses length/width/height; cylinder radius/height;
-                sphere radius.
+            primitive: Line, square, rectangle, disk, box, cylinder, or sphere.
+            parameters: Line length; square size; rectangle width/height; disk or
+                sphere radius; box length/width/height; cylinder radius/height.
             units: Geometry length unit.
         """
         normalized, error = self._normalize_parameters(primitive, parameters)
@@ -245,22 +248,45 @@ class SimulationTools:
 
     def generate_mesh(
         self,
-        geometry_job_id: str | None = None,
-        dimension: Literal[1, 2, 3] | None = None,
-        min_size: float | None = None,
-        max_size: float | None = None,
-        element_family: ElementFamilyName | None = None,
+        geometry_job_id: Annotated[
+            str | None,
+            Field(
+                description="Completed geometry job ID in this project. Omit for the selected active geometry; never invent an ID."
+            ),
+        ] = None,
+        dimension: Annotated[
+            Literal[1, 2, 3] | None,
+            Field(
+                description="1D line, 2D surface, or 3D volume. Omit to infer the dimension from stored geometry."
+            ),
+        ] = None,
+        min_size: Annotated[
+            float | None,
+            Field(
+                description="User-specified minimum element size in geometry units (mm for imported STEP). Omit missing sizes to request clarification; never guess."
+            ),
+        ] = None,
+        max_size: Annotated[
+            float | None,
+            Field(
+                description="User-specified maximum element size in the same units as min_size. Both bounds are needed for submission; explicit bounds need no pending proposal."
+            ),
+        ] = None,
+        element_family: Annotated[
+            ElementFamilyName | None,
+            Field(
+                description="Requested or verified existing family: 1D line, 2D triangular/quadrilateral, or 3D tetrahedral. Hexahedral is unsupported; never silently substitute."
+            ),
+        ] = None,
     ) -> str:
-        """Mesh a completed geometry, defaulting to the selected active geometry.
+        """Generate a first mesh or a new mesh version of existing completed geometry.
 
-        Args:
-            geometry_job_id: Existing geometry job ID. Omit ONLY when the user
-                refers to the current/active/selected geometry.
-            dimension: 2D surface or 3D volume mesh.
-            min_size: Minimum mesh size in geometry units.
-            max_size: Maximum mesh size in geometry units.
-            element_family: Tetrahedral supported; hexahedral unsupported.
-                Never silently substitute tet for hex.
+        Use for changes to resolution, density, element sizes or family, including
+        refinement and coarsening. With both explicit size bounds it submits one
+        job without requiring a pending proposal. With missing bounds it returns
+        a chat-scoped clarification and submits no job. It never recreates the
+        geometry or overwrites old meshes. New change requests belong here;
+        confirm_remesh only approves an already persisted proposal.
         """
         # Reject unsupported 3D hex before any geometry lookup or job submission.
         if element_family == "hexahedral":
@@ -380,13 +406,14 @@ class SimulationTools:
 
         Args:
             name: Geometry name.
-            primitive: Box, cylinder, or sphere.
+            primitive: Line, square, rectangle, disk, box, cylinder, or sphere.
             parameters: Primitive dimensions.
             units: Geometry length unit.
-            dimension: 2D or 3D mesh dimension.
+            dimension: 1D line, 2D surface, or 3D volume; inferred when omitted.
             min_size: Minimum mesh size.
             max_size: Maximum mesh size.
-            element_family: Tetrahedral supported; hexahedral rejected.
+            element_family: Line for 1D, triangular/quadrilateral for 2D,
+                tetrahedral for 3D; hexahedral rejected.
         """
         primitive_dimension = {
             "line": 1,
@@ -654,12 +681,23 @@ class SimulationTools:
         return RemeshProposalStore(Path(db_path))
 
     def get_pending_remesh(self) -> str:
-        """Read a pending clarification for the current project without submitting a job."""
+        """Read this chat's persisted remesh proposal without submitting work.
+
+        An absent proposal does not mean remeshing is unavailable. For a new
+        mesh change or explicit size bounds, use generate_mesh instead.
+        """
         store = self._proposal_store()
         if store is None:
             return self._error("Project context is not configured")
         proposal = store.get(self.proposal_scope)
-        return json.dumps({"ok": bool(proposal), "pending_proposal": proposal})
+        result = {"ok": bool(proposal), "pending_proposal": proposal}
+        if proposal is None:
+            result["message"] = (
+                "No pending proposal. Remeshing is supported: use generate_mesh for a new "
+                "request, with omitted sizes for clarification or both explicit sizes to submit. "
+                "No job was submitted."
+            )
+        return json.dumps(result)
 
     def cancel_pending_remesh(self) -> str:
         """Cancel the pending remesh proposal; do not delete existing mesh versions."""
@@ -674,11 +712,20 @@ class SimulationTools:
             }
         )
 
-    def confirm_remesh(self, confirmed: bool = False) -> str:
-        """Submit stored remesh settings ONLY after the user explicitly confirms them.
+    def confirm_remesh(
+        self,
+        confirmed: Annotated[
+            bool,
+            Field(
+                description="True only for the current user's explicit approval of this chat's stored proposal. A new mesh-change request or newly supplied sizes is not approval; use generate_mesh."
+            ),
+        ] = False,
+    ) -> str:
+        """Approve and submit this chat's existing persisted remesh proposal once.
 
-        Args:
-            confirmed: True only when the user confirms the proposed sizes/family.
+        Requires explicit user approval of the stored settings and unchanged
+        active geometry. Do not use to start refinement/coarsening, generate a
+        first mesh, or apply newly supplied bounds; use generate_mesh for those.
         """
         if not confirmed:
             return self._error("Explicit confirmation required. No job submitted.")
@@ -687,7 +734,11 @@ class SimulationTools:
             return self._error("Project context is not configured")
         proposal = store.get(self.proposal_scope)
         if proposal is None:
-            return self._error("No pending remesh proposal. Nothing was submitted.")
+            return self._error(
+                "No pending remesh proposal. Nothing was submitted. For a NEW remesh request "
+                "use generate_mesh, omitting missing sizes for clarification or passing both "
+                "explicit sizes to submit. Remeshing is supported."
+            )
         active = json.loads(self.get_active_geometry())
         if (
             not active.get("ok")
@@ -794,7 +845,12 @@ class SimulationTools:
                 "submitted": False,
                 "current_mesh": current,
                 "proposed_mesh": proposal,
-                "message": "Would you like to keep these element sizes for a new mesh version, or specify new sizes? Existing geometry and mesh versions will remain unchanged.",
+                "message": (
+                    "These proposed settings inherit unspecified values from the current mesh. "
+                    "Inherited sizes are not an automatic refinement or coarsening. Supply new "
+                    "bounds to change resolution, or confirm only if these exact settings match "
+                    "your intent. No job submitted; existing geometry and mesh versions are preserved."
+                ),
             }
         )
 

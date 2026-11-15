@@ -501,15 +501,22 @@ class WorkspaceRepository:
 
     def latest_context_user(self, project_id, chat_id):
         """Bounded routing hint, excluding current, failed and interrupted turns."""
+        messages = self.recent_context_users(project_id, chat_id, limit=1)
+        return messages[0] if messages else None
+
+    def recent_context_users(self, project_id, chat_id, *, limit=4):
+        """Bounded chat-local intent chain; never include unfinished turns."""
+        if not 1 <= limit <= 4:
+            raise ValueError("Routing history limit must be between 1 and 4")
         self.chat(project_id, chat_id)
         with self._connect() as db:
-            row = db.execute(
+            rows = db.execute(
                 "SELECT id,content FROM workspace_messages m WHERE chat_id=? AND role='user' "
                 "AND NOT EXISTS (SELECT 1 FROM conversation_turns t "
-                "WHERE t.user_message_id=m.id AND t.status!='completed') ORDER BY id DESC LIMIT 1",
-                (str(chat_id),),
-            ).fetchone()
-        return dict(row) if row else None
+                "WHERE t.user_message_id=m.id AND t.status!='completed') ORDER BY id DESC LIMIT ?",
+                (str(chat_id), limit),
+            ).fetchall()
+        return [dict(row) for row in rows]
 
     def context_messages(self, project_id, chat_id):
         """Only committed exchanges enter model history; failed user turns stay visible in UI."""

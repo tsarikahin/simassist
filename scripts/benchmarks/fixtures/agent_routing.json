@@ -708,5 +708,423 @@
     "required_tools": [],
     "fallback": false,
     "clarification_required": false
+  },
+  {
+    "message": "Use 0.025?0.05 mm.",
+    "domains": [
+      "meshing",
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Make it finer.",
+      "geometry_job_id": "active",
+      "has_completed_mesh": true
+    },
+    "required_tools": [
+      "generate_mesh"
+    ],
+    "fallback": false,
+    "clarification_required": false
+  },
+  {
+    "message": "Use 0.025-0.05mm.",
+    "domains": [
+      "meshing",
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Make it finer.",
+      "geometry_job_id": "active",
+      "has_completed_mesh": true
+    },
+    "required_tools": [
+      "generate_mesh"
+    ],
+    "fallback": false,
+    "clarification_required": false
+  },
+  {
+    "message": "0.025 to 0.05 mm.",
+    "domains": [
+      "meshing",
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Make it finer.",
+      "geometry_job_id": "active",
+      "has_completed_mesh": true
+    },
+    "required_tools": [
+      "generate_mesh"
+    ],
+    "fallback": false,
+    "clarification_required": false
+  },
+  {
+    "message": "Use min_size 0.025 and max_size 0.05.",
+    "domains": [
+      "meshing",
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Make it finer.",
+      "geometry_job_id": "active",
+      "has_completed_mesh": true
+    },
+    "required_tools": [
+      "generate_mesh"
+    ],
+    "fallback": false,
+    "clarification_required": false
+  },
+  {
+    "message": "Use 0.025?0.05 mm.",
+    "domains": [
+      "meshing",
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Make it finer.",
+      "geometry_job_id": "active",
+      "has_completed_mesh": true
+    },
+    "required_tools": [
+      "generate_mesh"
+    ],
+    "fallback": false,
+    "clarification_required": false
+  },
+  {
+    "message": "Use 0.025?0.05 mm.",
+    "domains": [
+      "meshing",
+      "workspace"
+    ],
+    "context": {
+      "pending_remesh": true
+    },
+    "required_tools": [
+      "generate_mesh"
+    ],
+    "fallback": false,
+    "clarification_required": false
+  },
+  {
+    "message": "Actually use 0.02?0.04 mm.",
+    "domains": [
+      "meshing",
+      "workspace"
+    ],
+    "context": {
+      "recent_intents": [
+        "Use 0.025?0.05 mm.",
+        "Make it finer."
+      ],
+      "geometry_job_id": "active"
+    },
+    "required_tools": [
+      "generate_mesh"
+    ],
+    "fallback": false,
+    "clarification_required": false
+  },
+  {
+    "message": "Use 0.025?0.05 mm.",
+    "domains": [
+      "workspace"
+    ],
+    "context": {
+      "has_completed_mesh": true,
+      "selected_mesh_job_id": "selected"
+    },
+    "required_tools": [],
+    "fallback": true,
+    "clarification_required": true
+  },
+  {
+    "message": "Use 0.025?0.05 mm.",
+    "domains": [
+      "workspace"
+    ],
+    "context": {
+      "recent_intents": [
+        "Create a box.",
+        "Make it finer."
+      ],
+      "geometry_job_id": "active"
+    },
+    "required_tools": [],
+    "fallback": true,
+    "clarification_required": true
+  },
+  {
+    "message": "Use 0.025?0.05 mm.",
+    "domains": [
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Do not mesh anything."
+    },
+    "required_tools": [],
+    "fallback": true,
+    "clarification_required": true
+  },
+  {
+    "message": "Use 0.025?0.05 mm.",
+    "domains": [
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Solve mesh displacement."
+    },
+    "required_tools": [],
+    "fallback": true,
+    "clarification_required": true
+  },
+  {
+    "message": "Use radius 0.025 mm.",
+    "domains": [
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Make it finer."
+    },
+    "required_tools": [],
+    "fallback": true,
+    "clarification_required": true
+  },
+  {
+    "message": "Apply boundary conditions at 0.025?0.05 mm.",
+    "domains": [
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Make it finer."
+    },
+    "required_tools": [],
+    "fallback": false,
+    "clarification_required": false
+  },
+  {
+    "message": "Increase the resolution, please.",
+    "domains": [
+      "meshing",
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Create an annulus and mesh it.",
+      "geometry_job_id": "active",
+      "has_completed_mesh": true
+    },
+    "required_tools": [
+      "generate_mesh"
+    ],
+    "fallback": true,
+    "clarification_required": false
+  },
+  {
+    "message": "It looks too chunky.",
+    "domains": [
+      "meshing",
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Create an annulus and mesh it.",
+      "geometry_job_id": "active",
+      "has_completed_mesh": true
+    },
+    "required_tools": [
+      "generate_mesh"
+    ],
+    "fallback": true,
+    "clarification_required": false
+  },
+  {
+    "message": "I need more detail.",
+    "domains": [
+      "meshing",
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Create an annulus and mesh it.",
+      "geometry_job_id": "active",
+      "has_completed_mesh": true
+    },
+    "required_tools": [
+      "generate_mesh"
+    ],
+    "fallback": true,
+    "clarification_required": false
+  },
+  {
+    "message": "Can we resolve the small features better?",
+    "domains": [
+      "meshing",
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Create an annulus and mesh it.",
+      "geometry_job_id": "active",
+      "has_completed_mesh": true
+    },
+    "required_tools": [
+      "generate_mesh"
+    ],
+    "fallback": true,
+    "clarification_required": false
+  },
+  {
+    "message": "Use a tighter discretization.",
+    "domains": [
+      "meshing",
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Create an annulus and mesh it.",
+      "geometry_job_id": "active",
+      "has_completed_mesh": true
+    },
+    "required_tools": [
+      "generate_mesh"
+    ],
+    "fallback": true,
+    "clarification_required": false
+  },
+  {
+    "message": "Could you improve that?",
+    "domains": [
+      "meshing",
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Create an annulus and mesh it.",
+      "geometry_job_id": "active",
+      "has_completed_mesh": true
+    },
+    "required_tools": [
+      "generate_mesh"
+    ],
+    "fallback": true,
+    "clarification_required": false
+  },
+  {
+    "message": "Please adjust the density.",
+    "domains": [
+      "meshing",
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Create an annulus and mesh it.",
+      "geometry_job_id": "active",
+      "has_completed_mesh": true
+    },
+    "required_tools": [
+      "generate_mesh"
+    ],
+    "fallback": true,
+    "clarification_required": false
+  },
+  {
+    "message": "Use 0.025?0.05 mm.",
+    "domains": [
+      "meshing",
+      "workspace"
+    ],
+    "context": {
+      "recent_intents": [
+        "Increase the resolution, please.",
+        "Create an annulus and mesh it."
+      ],
+      "has_completed_mesh": true
+    },
+    "required_tools": [
+      "generate_mesh"
+    ],
+    "fallback": false,
+    "clarification_required": false
+  },
+  {
+    "message": "Proceed with that plan.",
+    "domains": [
+      "meshing",
+      "workspace"
+    ],
+    "context": {
+      "pending_remesh": true
+    },
+    "required_tools": [
+      "confirm_remesh"
+    ],
+    "fallback": false,
+    "clarification_required": false
+  },
+  {
+    "message": "Go ahead.",
+    "domains": [
+      "meshing",
+      "workspace"
+    ],
+    "context": {
+      "pending_remesh": true
+    },
+    "required_tools": [
+      "confirm_remesh"
+    ],
+    "fallback": false,
+    "clarification_required": false
+  },
+  {
+    "message": "Sounds good.",
+    "domains": [
+      "meshing",
+      "workspace"
+    ],
+    "context": {
+      "pending_remesh": true
+    },
+    "required_tools": [
+      "confirm_remesh"
+    ],
+    "fallback": false,
+    "clarification_required": false
+  },
+  {
+    "message": "Hello.",
+    "domains": [
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Make it finer.",
+      "has_completed_mesh": true
+    },
+    "required_tools": [],
+    "fallback": false,
+    "clarification_required": false
+  },
+  {
+    "message": "Thank you!",
+    "domains": [
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Make it finer.",
+      "has_completed_mesh": true
+    },
+    "required_tools": [],
+    "fallback": false,
+    "clarification_required": false
+  },
+  {
+    "message": "What has completed?",
+    "domains": [
+      "workspace"
+    ],
+    "context": {
+      "recent_intent": "Make it finer.",
+      "has_completed_mesh": true
+    },
+    "required_tools": [],
+    "fallback": false,
+    "clarification_required": false
   }
 ]

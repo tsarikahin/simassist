@@ -1,0 +1,247 @@
+{
+  "model": "spark-x2.6-4b",
+  "endpoint": "http://127.0.0.1:1235/v1",
+  "temperature": 0,
+  "streaming": true,
+  "response_reserve_tokens": 2048,
+  "method": "Fresh isolated verified annulus per case; real local MAF model rounds and worker. No production projects touched. Creation fixture is deterministic, all edit turns use the LLM.",
+  "cases": [
+    {
+      "case": "exact",
+      "turns": [
+        {
+          "message": "Make it finer.",
+          "modules": [
+            "workspace",
+            "meshing"
+          ],
+          "reasons": [
+            "explicit_meshing",
+            "active_mesh_context"
+          ],
+          "tools_invoked": [
+            "generate_mesh"
+          ],
+          "submitted_job_ids": [],
+          "response": "The current mesh is 2D triangular at 0.05\u20130.1 mm. To make it finer, I need new element size bounds \u2014 please provide the desired min and max sizes (in mm). I won't guess values.",
+          "latency_ms": 29786.897300044075,
+          "usage": {
+            "total_token_count": 6392,
+            "input_token_count": 5166,
+            "reasoning_output_token_count": 1152,
+            "completion/reasoning_tokens": 1152,
+            "output_token_count": 1226
+          }
+        },
+        {
+          "message": "Use 0.025\u20130.05 mm.",
+          "modules": [
+            "workspace",
+            "meshing"
+          ],
+          "reasons": [
+            "chat_pending_remesh",
+            "active_mesh_context"
+          ],
+          "tools_invoked": [
+            "get_active_geometry",
+            "generate_mesh"
+          ],
+          "submitted_job_ids": [
+            "4f948910-a044-4db6-a9d9-65f24ca97bd4"
+          ],
+          "response": "Mesh generation job submitted (ID `4f948910-a044-4db6-a9d9-65f24ca97bd4`), 2D triangular, sizes 0.025\u20130.05 mm. It is queued; use Job Monitor for completion.",
+          "latency_ms": 13117.272200004663,
+          "usage": {
+            "total_token_count": 8318,
+            "input_token_count": 7799,
+            "reasoning_output_token_count": 360,
+            "completion/reasoning_tokens": 360,
+            "output_token_count": 519
+          }
+        }
+      ],
+      "clarification_created": true,
+      "no_premature_job": true,
+      "clarification_visible": true,
+      "new_jobs": 1,
+      "completed": true,
+      "same_geometry": true,
+      "size_bounds_correct": true,
+      "original_nodes": 1247,
+      "new_nodes": 4622,
+      "passed": true
+    },
+    {
+      "case": "resolution",
+      "turns": [
+        {
+          "message": "The triangles look chunky. I'd like better resolution.",
+          "modules": [
+            "workspace",
+            "meshing"
+          ],
+          "reasons": [
+            "chat_mesh_continuation"
+          ],
+          "tools_invoked": [
+            "generate_mesh"
+          ],
+          "submitted_job_ids": [],
+          "response": "The current mesh is 2D triangular at 0.05\u20130.1 mm. To refine, I need new size bounds \u2014 please tell me the desired min/max element sizes (in mm) for the finer mesh.",
+          "latency_ms": 13155.453300045338,
+          "usage": {
+            "total_token_count": 5715,
+            "input_token_count": 5184,
+            "reasoning_output_token_count": 459,
+            "completion/reasoning_tokens": 459,
+            "output_token_count": 531
+          }
+        },
+        {
+          "message": "Use 0.025\u20130.05 mm.",
+          "modules": [
+            "workspace",
+            "meshing"
+          ],
+          "reasons": [
+            "chat_pending_remesh",
+            "active_mesh_context"
+          ],
+          "tools_invoked": [
+            "generate_mesh"
+          ],
+          "submitted_job_ids": [
+            "d13cc4e5-2c1a-4c60-9898-df2cb7990ae5"
+          ],
+          "response": "Mesh refinement job submitted (job `d13cc4e5-2c1a-4c60-9898-df2cb7990ae5`), 2D triangular, sizes 0.025\u20130.05 mm. It is queued; use Job Monitor for completion.",
+          "latency_ms": 4829.376499983482,
+          "usage": {
+            "total_token_count": 5288,
+            "input_token_count": 5104,
+            "reasoning_output_token_count": 68,
+            "completion/reasoning_tokens": 68,
+            "output_token_count": 184
+          }
+        }
+      ],
+      "clarification_created": true,
+      "no_premature_job": true,
+      "clarification_visible": true,
+      "new_jobs": 1,
+      "completed": true,
+      "same_geometry": true,
+      "size_bounds_correct": true,
+      "original_nodes": 1247,
+      "new_nodes": 4622,
+      "passed": true
+    },
+    {
+      "case": "density",
+      "turns": [
+        {
+          "message": "Can you back off the density? This is more detail than I need.",
+          "modules": [
+            "workspace",
+            "meshing"
+          ],
+          "reasons": [
+            "chat_mesh_continuation"
+          ],
+          "tools_invoked": [
+            "get_active_geometry",
+            "get_active_mesh_info"
+          ],
+          "submitted_job_ids": [],
+          "response": "I can coarsen the mesh, but I need the new size bounds to submit. The current mesh is 2D triangular at 0.05\u20130.1 mm. What new min/max element sizes would you like (in mm)?",
+          "latency_ms": 34171.70750000514,
+          "usage": {
+            "total_token_count": 6915,
+            "input_token_count": 5492,
+            "reasoning_output_token_count": 1355,
+            "completion/reasoning_tokens": 1355,
+            "output_token_count": 1423
+          }
+        },
+        {
+          "message": "Use 0.1\u20130.2 mm.",
+          "modules": [
+            "workspace",
+            "meshing"
+          ],
+          "reasons": [
+            "mesh_parameter_followup",
+            "active_mesh_context"
+          ],
+          "tools_invoked": [
+            "get_active_geometry",
+            "generate_mesh"
+          ],
+          "submitted_job_ids": [
+            "267ada00-27ed-4fe0-8280-6df694878f27"
+          ],
+          "response": "Mesh coarsening submitted \u2014 job `267ada00-27ed-4fe0-8280-6df694878f27`, 2D triangular, sizes 0.1\u20130.2 mm. It is queued; use Job Monitor for completion.",
+          "latency_ms": 10285.63470003428,
+          "usage": {
+            "total_token_count": 8270,
+            "input_token_count": 7853,
+            "reasoning_output_token_count": 260,
+            "completion/reasoning_tokens": 260,
+            "output_token_count": 417
+          }
+        }
+      ],
+      "clarification_created": false,
+      "no_premature_job": true,
+      "clarification_visible": true,
+      "new_jobs": 1,
+      "completed": true,
+      "same_geometry": true,
+      "size_bounds_correct": true,
+      "original_nodes": 1247,
+      "new_nodes": 350,
+      "passed": true
+    },
+    {
+      "case": "recover_false_claim",
+      "turns": [
+        {
+          "message": "Use 0.025\u20130.05 mm.",
+          "modules": [
+            "workspace",
+            "meshing"
+          ],
+          "reasons": [
+            "mesh_parameter_followup",
+            "active_mesh_context"
+          ],
+          "tools_invoked": [
+            "get_active_geometry",
+            "generate_mesh"
+          ],
+          "submitted_job_ids": [
+            "082f46fb-643b-4ba1-a3e0-eed80ba59511"
+          ],
+          "response": "Mesh generation job submitted: `082f46fb-643b-4ba1-a3e0-eed80ba59511` (2D triangular, sizes 0.025\u20130.05 mm). It is queued; use Job Monitor for completion.",
+          "latency_ms": 31520.499199978076,
+          "usage": {
+            "total_token_count": 9079,
+            "input_token_count": 7810,
+            "reasoning_output_token_count": 1110,
+            "completion/reasoning_tokens": 1110,
+            "output_token_count": 1269
+          }
+        }
+      ],
+      "new_jobs": 1,
+      "completed": true,
+      "same_geometry": true,
+      "size_bounds_correct": true,
+      "original_nodes": 1247,
+      "new_nodes": 4622,
+      "passed": true
+    }
+  ],
+  "passed": 4,
+  "total": 4
+}
