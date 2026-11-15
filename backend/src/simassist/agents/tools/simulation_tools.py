@@ -804,11 +804,21 @@ class SimulationTools:
                     "metadata": metadata,
                 }
             )
+        selected_id = getattr(
+            self.project_context.get(self.geometry.project_id),
+            "selected_mesh_job_id",
+            None,
+        )
+        selected = next(
+            (item for item in matches if item["mesh_job_id"] == str(selected_id)), None
+        )
         return json.dumps(
             {
                 "ok": True,
                 "geometry_job_id": geometry_job_id,
-                "source": "Latest completed mesh of the active geometry; viewer mesh selection is not synchronized",
+                "source": "Persisted viewer selection and latest completed mesh are reported separately; remesh proposals use latest completed settings",
+                "selected_mesh": selected,
+                "selected_mesh_job_id": str(selected_id) if selected_id else None,
                 "mesh_version_count": len(matches),
                 "latest_completed_mesh": matches[0] if matches else None,
                 "mesh_versions": matches[:10],

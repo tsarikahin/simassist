@@ -8,6 +8,7 @@ export interface ProjectContext {
   active_geometry_job_id: string | null;
   active_geometry_artifact_id: string | null;
   updated_at: string | null;
+  selected_mesh_job_id?: string | null;
 }
 
 export interface ProjectGeometry {
@@ -97,4 +98,11 @@ export async function renameGeometry(projectId: string, jobId: string, name: str
 }
 export async function deleteGeometry(projectId: string, jobId: string): Promise<void> {
   await readResponse(await fetch(`${API_BASE_URL}/api/projects/${projectId}/geometries/${jobId}`, {method: "DELETE"}));
+}
+
+export async function setSelectedMesh(projectId: string, geometryJobId: string, meshJobId: string, signal?: AbortSignal): Promise<ProjectContext> {
+  return readResponse<ProjectContext>(await fetch(`${API_BASE_URL}/api/projects/${projectId}/selected-mesh`, {
+    method: "PUT", headers: {"Content-Type":"application/json"}, signal,
+    body: JSON.stringify({geometry_job_id: geometryJobId, mesh_job_id: meshJobId}),
+  }));
 }

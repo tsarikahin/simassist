@@ -17,6 +17,7 @@ class ProjectContext(BaseModel):
     project_id: UUID
     active_geometry_job_id: UUID | None = None
     active_geometry_artifact_id: UUID | None = None
+    selected_mesh_job_id: UUID | None = None
     updated_at: datetime | None = None
 
 
@@ -48,13 +49,23 @@ class ProjectContextRepository:
                 """
             )
 
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            columns = {
+                row[1] for row in conn.execute("PRAGMA table_info(project_context)")
+            }
+            if "selected_mesh_job_id" not in columns:
+                conn.execute(
+                    "ALTER TABLE project_context ADD COLUMN selected_mesh_job_id TEXT"
+                )
+
     def get(self, project_id: UUID) -> ProjectContext:
         with self._connect() as conn:
             row = conn.execute(
                 """
                 SELECT active_geometry_job_id,
                        active_geometry_artifact_id,
-                       updated_at
+                       updated_at, selected_mesh_job_id
                 FROM project_context
                 WHERE project_id = ?
                 """,
@@ -69,6 +80,7 @@ class ProjectContextRepository:
             active_geometry_job_id=(UUID(row[0]) if row[0] else None),
             active_geometry_artifact_id=(UUID(row[1]) if row[1] else None),
             updated_at=datetime.fromisoformat(row[2]),
+            selected_mesh_job_id=UUID(row[3]) if row[3] else None,
         )
 
     def set_active_geometry(
@@ -114,8 +126,10 @@ class ProjectContextRepository:
                         excluded.active_geometry_job_id,
                     active_geometry_artifact_id =
                         excluded.active_geometry_artifact_id,
-                    updated_at =
-                        excluded.updated_at
+                    selected_mesh_job_id = CASE
+                        WHEN project_context.active_geometry_job_id=excluded.active_geometry_job_id
+                        THEN project_context.selected_mesh_job_id ELSE NULL END,
+                    updated_at = excluded.updated_at
                 """,
                 (
                     str(project_id),
@@ -142,4 +156,33 @@ class ProjectContextRepository:
                 (str(project_id),),
             )
 
+        return self.get(project_id)
+
+    def set_selected_mesh(
+        self, project_id: UUID, geometry_job_id: UUID, mesh_job_id: UUID
+    ):
+        """Select only a completed version of the active geometry, without changing jobs."""
+        mesh = self.job_repository.get(mesh_job_id)
+        if (
+            mesh.project_id != project_id
+            or mesh.type != JobType.MESH_GENERATE
+            or mesh.status != JobStatus.COMPLETED
+        ):
+            raise ValueError("Selected mesh must be a completed mesh in this project")
+        with self._connect() as conn:
+            conn.execute("BEGIN IMMEDIATE")
+            row = conn.execute(
+                "SELECT active_geometry_job_id,active_geometry_artifact_id FROM project_context WHERE project_id=?",
+                (str(project_id),),
+            ).fetchone()
+            if not row or row[0] != str(geometry_job_id):
+                raise ValueError(
+                    "Active geometry changed; select the geometry before its mesh"
+                )
+            if str((mesh.result or {}).get("geometry_artifact_id", "")) != row[1]:
+                raise ValueError("Selected mesh belongs to another geometry revision")
+            conn.execute(
+                "UPDATE project_context SET selected_mesh_job_id=?,updated_at=? WHERE project_id=?",
+                (str(mesh_job_id), datetime.now(UTC).isoformat(), str(project_id)),
+            )
         return self.get(project_id)

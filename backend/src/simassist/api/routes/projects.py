@@ -77,7 +77,9 @@ def list_project_geometries(
     project_id: UUID,
     manager: JobManagerDep,
 ):
-    overrides = WorkspaceRepository(get_data_root() / "jobs.db").geometry_overrides(project_id)
+    overrides = WorkspaceRepository(get_data_root() / "jobs.db").geometry_overrides(
+        project_id
+    )
     items = [
         job
         for job in manager.list_by_project(project_id)
@@ -102,7 +104,9 @@ def _geometry_job(project_id: UUID, geometry_job_id: UUID, manager: JobManagerDe
     try:
         job = manager.repository.get(geometry_job_id)
     except (KeyError, AttributeError):
-        matching = [j for j in manager.list_by_project(project_id) if j.id == geometry_job_id]
+        matching = [
+            j for j in manager.list_by_project(project_id) if j.id == geometry_job_id
+        ]
         if not matching:
             raise HTTPException(status_code=404, detail="Geometry not found")
         job = matching[0]
@@ -112,21 +116,52 @@ def _geometry_job(project_id: UUID, geometry_job_id: UUID, manager: JobManagerDe
 
 
 @router.patch("/geometries/{geometry_job_id}")
-def rename_geometry(project_id: UUID, geometry_job_id: UUID,
-                    request: RenameGeometryRequest, manager: JobManagerDep):
+def rename_geometry(
+    project_id: UUID,
+    geometry_job_id: UUID,
+    request: RenameGeometryRequest,
+    manager: JobManagerDep,
+):
     _geometry_job(project_id, geometry_job_id, manager)
     WorkspaceRepository(get_data_root() / "jobs.db").update_geometry(
-        project_id, geometry_job_id, name=request.name.strip())
+        project_id, geometry_job_id, name=request.name.strip()
+    )
     return {"ok": True}
 
 
 @router.delete("/geometries/{geometry_job_id}")
-def hide_geometry(project_id: UUID, geometry_job_id: UUID,
-                  manager: JobManagerDep, context: ProjectContextDep):
+def hide_geometry(
+    project_id: UUID,
+    geometry_job_id: UUID,
+    manager: JobManagerDep,
+    context: ProjectContextDep,
+):
     _geometry_job(project_id, geometry_job_id, manager)
     WorkspaceRepository(get_data_root() / "jobs.db").update_geometry(
-        project_id, geometry_job_id, deleted=True)
+        project_id, geometry_job_id, deleted=True
+    )
     if context.get(project_id).active_geometry_job_id == geometry_job_id:
         context.clear_active_geometry(project_id)
-    return {"ok": True, "note": "Geometry hidden; existing jobs and artifacts preserved"}
+    return {
+        "ok": True,
+        "note": "Geometry hidden; existing jobs and artifacts preserved",
+    }
 
+
+class SelectedMeshRequest(BaseModel):
+    geometry_job_id: UUID
+    mesh_job_id: UUID
+
+
+@router.put("/selected-mesh", response_model=ProjectContext)
+def set_selected_mesh(
+    project_id: UUID, request: SelectedMeshRequest, context: ProjectContextDep
+):
+    try:
+        return context.set_selected_mesh(
+            project_id, request.geometry_job_id, request.mesh_job_id
+        )
+    except KeyError as exc:
+        raise HTTPException(404, "Mesh not found") from exc
+    except ValueError as exc:
+        raise HTTPException(409, str(exc)) from exc

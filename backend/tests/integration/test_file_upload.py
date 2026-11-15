@@ -408,3 +408,63 @@ def test_parser_launch_failure_returns_actionable_http_error(upload_api, monkeyp
     assert "File processing is unavailable" in response.json()["detail"]
     assert FileRepository(root).list(project) == []
     assert not list((root / "uploads").rglob("*.part"))
+
+
+def test_preflight_planar_step_with_hole_and_slot_import_preview(upload_api):
+    import numpy as np
+    from simassist.jobs.manager import JobManager
+    from simassist.workers.runner import SimulationWorker
+
+    client, _, project, _, _, root = upload_api
+    planar = root / "planar-with-hole-and-slot.step"
+    gmsh.initialize()
+    try:
+        gmsh.option.setNumber("General.Terminal", 0)
+        gmsh.model.add("planar_import_preflight")
+        outer = gmsh.model.occ.addRectangle(0, 0, 0, 4, 4)
+        hole = gmsh.model.occ.addDisk(1, 1, 0, 0.5, 0.5)
+        slot = gmsh.model.occ.addRectangle(2.25, 1, 0, 0.25, 1)
+        gmsh.model.occ.cut([(2, outer)], [(2, hole), (2, slot)])
+        gmsh.model.occ.synchronize()
+        gmsh.write(str(planar))
+    finally:
+        gmsh.finalize()
+    response = upload(client, project, planar.read_bytes(), planar.name)
+    assert response.status_code == 200, response.text
+    item = response.json()
+    assert item["inspection"]["dimension"] == 2
+    assert item["inspection"]["volume_count"] == 0
+    assert item["inspection"]["curve_count"] > 4
+    worker = SimulationWorker(root)
+    geometry_id, _ = FileRepository(root).submit_import(project, UUID(item["file_id"]))
+    geometry = worker.process_next()
+    assert geometry.id == geometry_id and geometry.status.value == "completed", (
+        geometry.error
+    )
+    preview = json.loads(
+        worker.artifact_store.resolve_path(
+            UUID(geometry.result["preview_artifact_id"])
+        ).read_text()
+    )
+    points = np.array(preview["points"])
+    triangles = points[np.array(preview["triangles"])]
+    centers = triangles.mean(axis=1)
+    assert np.allclose(points[:, 2], 0)
+    assert not np.any((centers[:, 0] - 1) ** 2 + (centers[:, 1] - 1) ** 2 < 0.47**2)
+    assert not np.any(
+        (centers[:, 0] > 2.25)
+        & (centers[:, 0] < 2.5)
+        & (centers[:, 1] > 1)
+        & (centers[:, 1] < 2)
+    )
+    areas = (
+        np.linalg.norm(
+            np.cross(
+                triangles[:, 1] - triangles[:, 0], triangles[:, 2] - triangles[:, 0]
+            ),
+            axis=1,
+        )
+        / 2
+    )
+    assert areas.sum() == pytest.approx(16 - np.pi * 0.5**2 - 0.25, rel=0.02)
+    assert len(JobManager(worker.repository).list_by_project(project)) == 1

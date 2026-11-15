@@ -99,7 +99,10 @@ INTERACTIVE REMESH CLARIFICATION (IMPORTANT)
 - Pending proposals are for the active geometry. If selected geometry has
   changed, confirmation must fail, not run a job on another geometry.
 - Previous mesh versions must remain available; a remesh creates a new one.
-- Do not assume that the viewer-selected mesh is the source: the backend
+- get_active_mesh_info reports selected_mesh separately from latest_completed_mesh.
+  Explain which version you inspected; never replace a selected older version
+  with the latest in your answer. Remesh proposals still use the latest baseline.
+- Do not assume that the viewer-selected mesh is the remesh source: the backend
   explicitly uses the latest completed mesh of the current geometry.
 
 MESH ELEMENT FAMILY RULES
