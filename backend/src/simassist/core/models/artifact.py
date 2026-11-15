@@ -10,6 +10,7 @@ from pydantic import BaseModel, Field
 
 class ArtifactType(StrEnum):
     GEOMETRY = "geometry"
+    GEOMETRY_PREVIEW = "geometry_preview"
     MESH = "mesh"
     SOLVER_INPUT = "solver_input"
     SOLVER_OUTPUT = "solver_output"

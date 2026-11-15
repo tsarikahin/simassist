@@ -8,6 +8,9 @@ dependencies = [
     "pydantic-settings",
     "gmsh>=4.15.2",
     "meshio>=5.3.5",
+    "agent-framework-core>=1.26.0",
+    "agent-framework-openai>=1.18.2",
+    "agent-framework-anthropic>=1.0.0b261112",
 ]
 
 [build-system]

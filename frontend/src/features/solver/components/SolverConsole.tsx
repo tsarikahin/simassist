@@ -1,56 +1,76 @@
 
 import { useEffect, useState } from "react";
-import { Play, Terminal } from "lucide-react";
+import { Terminal } from "lucide-react";
 
-import {
-  createJob,
-  getJob,
-  type Job,
-} from "../../../services/jobs";
+import { getJob, type Job } from "../../../services/jobs";
 
-const DEMO_PROJECT_ID =
-  "11111111-1111-4111-8111-111111111111";
+interface SolverConsoleProps {
+  jobId: string | null;
+  onPreviewReady: (artifactId: string) => void;
+}
 
-const TERMINAL_STATUSES = [
+const TERMINAL_STATUSES = new Set([
   "completed",
   "failed",
   "cancelled",
-];
+]);
 
-export function SolverConsole() {
+export function SolverConsole({
+  jobId,
+  onPreviewReady,
+}: SolverConsoleProps) {
   const [job, setJob] = useState<Job | null>(null);
-  const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
 
-  const jobId = job?.id;
-  const jobStatus = job?.status;
-
   useEffect(() => {
-    if (!jobId || !jobStatus) return;
-    if (TERMINAL_STATUSES.includes(jobStatus)) return;
+    if (!jobId) return;
 
     let active = true;
     let inFlight = false;
+    let timer: ReturnType<typeof setTimeout> | null = null;
 
     async function refresh() {
-      if (inFlight || !active) return;
+      if (!active || inFlight) return;
+
       inFlight = true;
 
       try {
         const updated = await getJob(jobId!);
 
-        if (active) {
-          setJob(updated);
-          setError(null);
+        if (!active) return;
+
+        setJob(updated);
+        setError(null);
+
+        if (updated.status === "completed") {
+          const previewId =
+            updated.result?.preview_artifact_id;
+
+          if (typeof previewId === "string") {
+            onPreviewReady(previewId);
+          }
         }
-      } catch (err) {
-        if (active) {
-          setError(
-            err instanceof Error
-              ? err.message
-              : "Failed to fetch job status"
+
+        if (!TERMINAL_STATUSES.has(updated.status)) {
+          timer = setTimeout(
+            () => void refresh(),
+            1000,
           );
         }
+      } catch (err) {
+        if (!active) return;
+
+        setError(
+          err instanceof Error
+            ? err.message
+            : "Failed to retrieve job status",
+        );
+
+        // Retry a temporary network failure.
+        timer = setTimeout(
+          () => void refresh(),
+          2000,
+        );
       } finally {
         inFlight = false;
       }
@@ -58,100 +78,66 @@ export function SolverConsole() {
 
     void refresh();
 
-    const interval = window.setInterval(
-      () => void refresh(),
-      1000
-    );
-
     return () => {
       active = false;
-      window.clearInterval(interval);
+
+      if (timer !== null) {
+        clearTimeout(timer);
+      }
     };
-  }, [jobId, jobStatus]);
+  }, [jobId, onPreviewReady]);
 
-  async function handleCreateGeometry() {
-    setLoading(true);
-    setError(null);
-    setJob(null);
+  const currentJob =
+    job?.id === jobId ? job : null;
 
-    try {
-      const created = await createJob({
-        project_id: DEMO_PROJECT_ID,
-        type: "geometry.create",
-        input: {
-          name: "Demo Cylinder",
-          definition: {
-            source: "primitive",
-            primitive: "cylinder",
-            parameters: {
-              radius: 10,
-              height: 50,
-            },
-          },
-        },
-      });
-
-      setJob(created);
-    } catch (err) {
-      setError(
-        err instanceof Error
-          ? err.message
-          : "Failed to create geometry job"
-      );
-    } finally {
-      setLoading(false);
-    }
-  }
+  const status = currentJob?.status.toUpperCase() ??
+    (jobId ? "LOADING" : "IDLE");
 
   return (
     <div className="solver-console">
       <div className="panel-heading">
         <Terminal size={16} />
+
         Job Monitor
 
         <span className="console-status">
-          {job?.status.toUpperCase() ?? "IDLE"}
+          {status}
         </span>
-
-        <button
-          type="button"
-          className="job-create-button"
-          onClick={handleCreateGeometry}
-          disabled={
-            loading ||
-            jobStatus === "queued" ||
-            jobStatus === "running"
-          }
-        >
-          <Play size={14} />
-          {loading ? "Submitting..." : "Create Test Geometry"}
-        </button>
       </div>
 
       <div className="console-output">
-        {!job && !error && (
-          <p>[system] Waiting for a simulation job...</p>
+        {!jobId && (
+          <p>
+            [system] Waiting for an agent-submitted job...
+          </p>
         )}
 
-        {job && (
-          <>
-            <p>[job] ID: {job.id}</p>
-            <p>[job] Type: {job.type}</p>
-            <p>[status] {job.status}</p>
+        {jobId && (
+          <p>[job] ID: {jobId}</p>
+        )}
 
-            {job.status === "completed" && (
+        {currentJob && (
+          <>
+            <p>[job] Type: {currentJob.type}</p>
+            <p>[status] {currentJob.status}</p>
+
+            {currentJob.status === "completed" && (
               <p>
-                [result] {JSON.stringify(job.result)}
+                [result] {JSON.stringify(currentJob.result)}
               </p>
             )}
 
-            {job.status === "failed" && (
-              <p>[error] {job.error}</p>
+            {currentJob.status === "failed" && (
+              <p>
+                [error] {currentJob.error}
+              </p>
             )}
           </>
         )}
 
-        {error && <p>[error] {error}</p>}
+        {error && (
+          <p>[error] {error}</p>
+        )}
       </div>
     </div>
   );
