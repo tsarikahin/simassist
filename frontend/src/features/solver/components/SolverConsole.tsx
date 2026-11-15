@@ -15,7 +15,10 @@ import { subscribeToJob } from "../../../services/jobEvents";
 interface SolverConsoleProps {
   projectId: string;
   jobIds: string[];
-  onPreviewReady: (artifactId: string) => void;
+  onPreviewReady: (
+    artifactId: string,
+    geometryJobId: string,
+  ) => void;
 }
 
 type DisplayStatus =
@@ -156,7 +159,7 @@ export function SolverConsole({
           previewId !== lastPreviewIdRef.current
         ) {
           lastPreviewIdRef.current = previewId;
-          onPreviewReady(previewId);
+          onPreviewReady(previewId, updated.id);
         }
       }
     },

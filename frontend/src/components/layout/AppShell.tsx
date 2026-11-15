@@ -1,11 +1,20 @@
 
 import {
+  useCallback,
+  useEffect,
   useRef,
   useState,
   type CSSProperties,
   type PointerEvent as ReactPointerEvent,
   type KeyboardEvent as ReactKeyboardEvent,
 } from "react";
+
+import {
+  getProjectContext,
+  getProjectGeometries,
+  setActiveGeometry,
+  type ProjectGeometry,
+} from "../../services/projectContext";
 
 import {
   Box,
@@ -124,6 +133,13 @@ export function AppShell() {
   const [activeJobIds, setActiveJobIds] =
     useState<string[]>([]);
 
+  const [activeGeometryJobId, setActiveGeometryJobId] =
+    useState<string | null>(null);
+
+  const [projectRevision, setProjectRevision] = useState(0);
+  const [projectError, setProjectError] =
+    useState<string | null>(null);
+
   const [layout, setLayout] =
     useState<LayoutSizes>(readSavedLayout);
 
@@ -144,6 +160,101 @@ export function AppShell() {
       return next;
     });
   }
+
+  // Restore persisted active geometry without submitting jobs.
+  useEffect(() => {
+    const controller = new AbortController();
+
+    async function restoreGeometry() {
+      try {
+        const [context, geometries] = await Promise.all([
+          getProjectContext(DEMO_PROJECT_ID, controller.signal),
+          getProjectGeometries(DEMO_PROJECT_ID, controller.signal),
+        ]);
+
+        if (controller.signal.aborted) return;
+
+        const selected = geometries.find(
+          (geometry) => geometry.id === context.active_geometry_job_id,
+        );
+
+        if (!selected) {
+          setActiveGeometryJobId(null);
+          setPreviewArtifactId(null);
+          return;
+        }
+
+        const previewId = selected.result?.preview_artifact_id;
+
+        if (typeof previewId !== "string") {
+          setProjectError("Active geometry has no preview artifact");
+          return;
+        }
+
+        setActiveGeometryJobId(selected.id);
+        setPreviewArtifactId(previewId);
+        setProjectError(null);
+      } catch (error) {
+        if (controller.signal.aborted) return;
+        setProjectError(
+          error instanceof Error
+            ? error.message
+            : "Unable to restore project context",
+        );
+      }
+    }
+
+    void restoreGeometry();
+    return () => controller.abort();
+  }, []);
+
+  // Select an existing completed geometry from Project Explorer.
+  const handleSelectGeometry = useCallback(
+    async (geometry: ProjectGeometry) => {
+      const previewId = geometry.result?.preview_artifact_id;
+
+      if (typeof previewId !== "string") {
+        setProjectError("Selected geometry has no preview artifact");
+        return;
+      }
+
+      try {
+        await setActiveGeometry(DEMO_PROJECT_ID, geometry.id);
+        setActiveGeometryJobId(geometry.id);
+        setPreviewArtifactId(previewId);
+        setProjectError(null);
+      } catch (error) {
+        setProjectError(
+          error instanceof Error
+            ? error.message
+            : "Unable to select geometry",
+        );
+      }
+    },
+    [],
+  );
+
+  // Persist newly completed geometry and show its preview.
+  const handleGeometryCompleted = useCallback(
+    (previewId: string, geometryJobId: string) => {
+      setPreviewArtifactId(previewId);
+      setProjectRevision((revision) => revision + 1);
+
+      void setActiveGeometry(DEMO_PROJECT_ID, geometryJobId)
+        .then(() => {
+          setActiveGeometryJobId(geometryJobId);
+          setProjectError(null);
+        })
+        .catch((error: unknown) => {
+          setProjectError(
+            error instanceof Error
+              ? error.message
+              : "Unable to save active geometry",
+          );
+        });
+    },
+    [],
+  );
 
   function handleJobsSubmitted(submittedIds: string[]) {
     if (submittedIds.length === 0) return;
@@ -426,7 +537,15 @@ export function AppShell() {
             Project Explorer
           </div>
 
-          <ProjectExplorer />
+          <ProjectExplorer
+            projectId={DEMO_PROJECT_ID}
+            activeGeometryJobId={activeGeometryJobId}
+            revision={projectRevision}
+            onSelectGeometry={(geometry) => {
+              void handleSelectGeometry(geometry);
+            }}
+            selectionError={projectError}
+          />
         </aside>
 
         <div
@@ -468,7 +587,7 @@ export function AppShell() {
             <SolverConsole
               projectId={DEMO_PROJECT_ID}
               jobIds={activeJobIds}
-              onPreviewReady={setPreviewArtifactId}
+              onPreviewReady={handleGeometryCompleted}
             />
           </div>
         </section>
