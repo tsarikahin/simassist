@@ -7,7 +7,12 @@ from uuid import UUID
 
 from simassist.core.models.artifact import ArtifactType
 from simassist.core.models.geometry import GeometryResult
-from simassist.core.models.mesh import MeshRequest, MeshResult
+from simassist.core.models.mesh import (
+    MeshDimension,
+    MeshElementFamily,
+    MeshRequest,
+    MeshResult,
+)
 from simassist.jobs.models import Job, JobType
 from simassist.storage.base import ArtifactStore
 
@@ -78,7 +83,6 @@ class VerificationService:
     ) -> None:
         try:
             geometry = GeometryResult.model_validate(result)
-
             preview_id = UUID(str(result["preview_artifact_id"]))
         except (ValueError, KeyError, TypeError) as exc:
             raise VerificationError("Invalid geometry result") from exc
@@ -133,8 +137,97 @@ class VerificationService:
             ):
                 raise VerificationError("Preview contains invalid triangle indices")
 
-        except (OSError, UnicodeError, ValueError, KeyError, TypeError) as exc:
+        except (
+            OSError,
+            UnicodeError,
+            ValueError,
+            KeyError,
+            TypeError,
+        ) as exc:
             raise VerificationError(f"Invalid geometry preview: {exc}") from exc
+
+    @staticmethod
+    def _verify_element_family(
+        mesh: MeshResult,
+        request: MeshRequest,
+    ) -> None:
+        metadata = mesh.metadata
+
+        if metadata.element_types:
+            actual_total = sum(metadata.element_types.values())
+
+            if actual_total != metadata.element_count:
+                raise VerificationError("Mesh element count mismatch")
+
+        if request.settings.dimension == MeshDimension.TWO_D:
+            # Element family currently applies only to 3D volumes.
+            # For 2D, verify that surface triangles exist.
+            triangle_count = sum(
+                count
+                for name, count in metadata.element_types.items()
+                if name.lower().startswith("triangle")
+            )
+
+            if triangle_count <= 0:
+                raise VerificationError("2D mesh contains no triangle elements")
+
+            return
+
+        # Prefer dimension-classified Gmsh metadata.
+        volume_types = {
+            name: count
+            for name, count in metadata.volume_element_types.items()
+            if count > 0
+        }
+
+        # Compatibility with older mesh result fixtures and
+        # previously stored Gmsh metadata.
+        if not volume_types:
+            volume_names = (
+                "tetrahedron",
+                "hexahedron",
+                "prism",
+                "pyramid",
+                "wedge",
+                "trihedron",
+            )
+
+            volume_types = {
+                name: count
+                for name, count in metadata.element_types.items()
+                if count > 0 and name.lower().startswith(volume_names)
+            }
+
+        if not volume_types:
+            raise VerificationError("3D mesh contains no volume elements")
+
+        if request.settings.element_family == MeshElementFamily.TETRAHEDRAL:
+            expected_prefix = "tetrahedron"
+
+        elif request.settings.element_family == MeshElementFamily.HEXAHEDRAL:
+            expected_prefix = "hexahedron"
+
+        else:
+            raise VerificationError("Unsupported mesh element family")
+
+        expected_count = sum(
+            count
+            for name, count in volume_types.items()
+            if name.lower().startswith(expected_prefix)
+        )
+
+        unexpected_types = {
+            name: count
+            for name, count in volume_types.items()
+            if not name.lower().startswith(expected_prefix)
+        }
+
+        if expected_count <= 0 or unexpected_types:
+            raise VerificationError(
+                f"Requested {request.settings.element_family.value} "
+                "mesh, but actual volume element types are "
+                f"{volume_types}"
+            )
 
     def _verify_mesh(
         self,
@@ -155,6 +248,8 @@ class VerificationService:
 
         if mesh.metadata.element_count <= 0:
             raise VerificationError("Mesh contains no elements")
+
+        self._verify_element_family(mesh, request)
 
         self._check_artifact(
             artifact_id=request.geometry_artifact_id,

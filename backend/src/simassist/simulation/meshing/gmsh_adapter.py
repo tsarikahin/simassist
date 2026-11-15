@@ -9,6 +9,7 @@ from simassist.core.models.artifact import (
     ArtifactType,
 )
 from simassist.core.models.mesh import (
+    MeshElementFamily,
     MeshMetadata,
     MeshRequest,
     MeshResult,
@@ -34,6 +35,12 @@ class GmshMeshingAdapter:
         return "gmsh"
 
     def generate(self, request: MeshRequest) -> MeshResult:
+        if request.settings.element_family != MeshElementFamily.TETRAHEDRAL:
+            raise ValueError(
+                "The Gmsh adapter currently supports tetrahedral "
+                "3D meshing only. Hexahedral meshing requires "
+                "a different meshing strategy or engine."
+            )
         geometry = self.artifact_store.get(request.geometry_artifact_id)
 
         if geometry.project_id != self.project_id:
@@ -117,16 +124,26 @@ class GmshMeshingAdapter:
         element_types, element_tags, _ = gmsh.model.mesh.getElements()
 
         element_counts: dict[str, int] = {}
+        volume_counts: dict[str, int] = {}
 
         for element_type, tags in zip(
             element_types,
             element_tags,
         ):
-            name, *_ = gmsh.model.mesh.getElementProperties(int(element_type))
-            element_counts[name] = element_counts.get(name, 0) + len(tags)
+            properties = gmsh.model.mesh.getElementProperties(int(element_type))
+
+            name = str(properties[0])
+            dimension = int(properties[1])
+            count = len(tags)
+
+            element_counts[name] = element_counts.get(name, 0) + count
+
+            if dimension == 3:
+                volume_counts[name] = volume_counts.get(name, 0) + count
 
         return MeshMetadata(
             node_count=len(node_tags),
             element_count=sum(element_counts.values()),
             element_types=element_counts,
+            volume_element_types=volume_counts,
         )

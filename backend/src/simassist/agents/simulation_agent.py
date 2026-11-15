@@ -1,4 +1,3 @@
-
 from __future__ import annotations
 
 from agent_framework import Agent
@@ -6,7 +5,6 @@ from agent_framework import Agent
 from simassist.agents.tools.simulation_tools import SimulationTools
 from simassist.llm.config import LLMConfig
 from simassist.llm.factory import create_chat_client
-
 
 SIMULATION_AGENT_INSTRUCTIONS = """
 You are SimAssist, an AI engineering simulation assistant.
@@ -34,6 +32,22 @@ TOOL SELECTION
 5. Supported geometry capabilities:
    Use list_geometry_capabilities when required parameters
    or supported primitives are unclear.
+   
+MESH ELEMENT FAMILY RULES
+
+- Mesh dimension and element family are different concepts.
+- A 3D mesh is not necessarily hexahedral.
+- Gmsh currently supports tetrahedral volume meshes.
+- Hexahedral meshing is not implemented.
+- Always pass the user's requested element_family explicitly
+  to generate_mesh or create_geometry_and_mesh.
+- Never silently replace hexahedral with tetrahedral.
+- If hexahedral meshing is requested, explain that it is
+  unsupported and ask before using tetrahedral instead.
+- Do not submit a job for an unsupported element family.
+- Do not claim that a specific element family was produced
+  unless it is confirmed by the actual mesh result.
+- For 3D meshing without an explicit family, use tetrahedral.
 
 EXECUTION RULES
 
