@@ -137,6 +137,7 @@ export function AppShell() {
     useState<string | null>(null);
 
   const [projectRevision, setProjectRevision] = useState(0);
+  const [meshCompletionRevision, setMeshCompletionRevision] = useState(0);
   const [projectError, setProjectError] =
     useState<string | null>(null);
 
@@ -255,6 +256,10 @@ export function AppShell() {
     },
     [],
   );
+
+  const handleMeshCompleted = useCallback((_meshJobId: string) => {
+    setMeshCompletionRevision((revision) => revision + 1);
+  }, []);
 
   function handleJobsSubmitted(submittedIds: string[]) {
     if (submittedIds.length === 0) return;
@@ -572,6 +577,7 @@ export function AppShell() {
               projectId={DEMO_PROJECT_ID}
               previewArtifactId={previewArtifactId}
               geometryJobId={activeGeometryJobId}
+              refreshRevision={meshCompletionRevision}
             />
           </div>
 
@@ -589,6 +595,7 @@ export function AppShell() {
               projectId={DEMO_PROJECT_ID}
               jobIds={activeJobIds}
               onPreviewReady={handleGeometryCompleted}
+              onMeshCompleted={handleMeshCompleted}
             />
           </div>
         </section>

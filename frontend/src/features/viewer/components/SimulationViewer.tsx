@@ -25,6 +25,7 @@ interface SimulationViewerProps {
   projectId: string;
   previewArtifactId: string | null;
   geometryJobId?: string | null;
+  refreshRevision?: number;
 }
 
 function createPolyData(preview: GeometryPreview) {
@@ -82,6 +83,7 @@ export function SimulationViewer({
   projectId,
   previewArtifactId,
   geometryJobId,
+  refreshRevision = 0,
 }: SimulationViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const vtkRef = useRef<VtkInstance | null>(null);
@@ -134,7 +136,7 @@ export function SimulationViewer({
         if (!controller.signal.aborted) setVersionsLoading(false);
       });
     return () => controller.abort();
-  }, [projectId, geometryJobId, meshRevision]);
+  }, [projectId, geometryJobId, meshRevision, refreshRevision]);
 
   const selectedMesh = meshVersions.find((mesh) => mesh.job_id === selectedMeshJobId);
   const volumeCounts = selectedMesh?.metadata.volume_element_types ?? {};
@@ -300,7 +302,7 @@ export function SimulationViewer({
       mapper?.delete();
       polyData?.delete();
     };
-  }, [projectId, previewArtifactId, geometryJobId, viewMode, meshRevision, selectedMeshJobId]);
+  }, [projectId, previewArtifactId, geometryJobId, viewMode, meshRevision, refreshRevision, selectedMeshJobId]);
 
   function resetCamera() {
     vtkRef.current?.getRenderer().resetCamera();

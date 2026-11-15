@@ -19,6 +19,7 @@ interface SolverConsoleProps {
     artifactId: string,
     geometryJobId: string,
   ) => void;
+  onMeshCompleted?: (meshJobId: string) => void;
 }
 
 type DisplayStatus =
@@ -29,17 +30,20 @@ type DisplayStatus =
   | "cancelled"
   | "connecting";
 
-function getJobTitle(type: string): string {
-  switch (type) {
-    case "geometry.create":
-      return "Geometry Creation";
-    case "mesh.generate":
-      return "3D Mesh Generation";
-    case "simulation.run":
-      return "Simulation";
-    default:
-      return type;
+
+function getJobTitle(job: Job | null): string {
+  if (!job) return "Loading job...";
+  if (job.type === "geometry.create") return "Geometry Creation";
+  if (job.type === "mesh.generate") {
+    const rawSettings = job.input?.settings;
+    const settings = isRecord(rawSettings) ? rawSettings : null;
+    const dimension = settings?.dimension;
+    return dimension === 1 || dimension === 2 || dimension === 3
+      ? `${dimension}D Mesh Generation`
+      : "Mesh Generation";
   }
+  if (job.type === "simulation.run") return "Simulation";
+  return job.type;
 }
 
 function isRecord(
@@ -119,6 +123,7 @@ export function SolverConsole({
   projectId,
   jobIds,
   onPreviewReady,
+  onMeshCompleted,
 }: SolverConsoleProps) {
   const [jobsById, setJobsById] = useState<
     Record<string, Job>
@@ -129,6 +134,7 @@ export function SolverConsole({
   >({});
 
   const lastPreviewIdRef = useRef<string | null>(null);
+  const reportedCompletedMeshesRef = useRef<Set<string>>(new Set());
 
   const handleJobUpdate = useCallback(
     (updated: Job) => {
@@ -145,7 +151,14 @@ export function SolverConsole({
         const next = { ...previous };
         delete next[updated.id];
         return next;
-      });
+      });      if (
+        updated.type === "mesh.generate" &&
+        updated.status === "completed" &&
+        !reportedCompletedMeshesRef.current.has(updated.id)
+      ) {
+        reportedCompletedMeshesRef.current.add(updated.id);
+        onMeshCompleted?.(updated.id);
+      }
 
       if (
         updated.type === "geometry.create" &&
@@ -163,7 +176,7 @@ export function SolverConsole({
         }
       }
     },
-    [onPreviewReady],
+    [onPreviewReady, onMeshCompleted],
   );
 
   useEffect(() => {
@@ -271,7 +284,7 @@ export function SolverConsole({
 
                 <strong>
                   {job
-                    ? getJobTitle(job.type)
+                    ? getJobTitle(job)
                     : "Loading job..."}
                 </strong>
 
