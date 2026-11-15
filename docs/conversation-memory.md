@@ -46,7 +46,7 @@ block. This overestimates typical English but is not a tokenizer guarantee for
 all languages or models. System instructions, serialized tool schemas, summary,
 whole recent exchanges and the current message are counted. The current request
 is never sliced. An input that cannot fit returns HTTP 422 with configuration
-guidance. The full tool surface alone plus instructions is approximately 5200
+guidance. The full tool surface alone plus instructions is approximately 6400
 estimated tokens, so a 4096-token model cannot support this tool surface safely.
 Defaults therefore use 16384; do not advertise a larger window than your model
 actually supports. Large in-flight tool results can consume more than the safety

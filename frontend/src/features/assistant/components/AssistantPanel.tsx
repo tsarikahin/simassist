@@ -1,7 +1,8 @@
 import { useEffect, useRef, useState } from "react";
-import { Bot, Send, User, Plus, Pencil, Trash2 } from "lucide-react";
+import { Bot, Send, User, Plus, Pencil, Trash2, Paperclip, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { uploadProjectFile, type FileAttachment, type UploadedFile } from "../../../services/files";
 import { streamChatMessage } from "../../../services/chat";
 import {
   createChat, deleteChat, getMessages, listChats, renameChat,
@@ -13,7 +14,12 @@ interface AssistantPanelProps {
   onJobsSubmitted: (jobIds: string[]) => void;
 }
 
-type Message = { id: number; role: "assistant" | "user"; content: string };
+type Message = StoredMessage;
+type PendingAttachment = { id: string; original: File; progress: number; uploaded?: UploadedFile; error?: string };
+
+function AttachmentChip({attachment}: {attachment: FileAttachment}) {
+  return <span className="attachment-chip"><Paperclip size={13}/><span className="attachment-name">{attachment.filename}</span><span>{attachment.format.toUpperCase()} / {Math.ceil(attachment.size_bytes / 1024)} KB</span></span>;
+}
 
 export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelProps) {
   const [chats, setChats] = useState<WorkspaceChat[]>([]);
@@ -23,11 +29,53 @@ export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelPro
   const [loading, setLoading] = useState(false);
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
+  const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const uploadControllers = useRef(new Map<string, AbortController>());
+  const filePicker = useRef<HTMLInputElement>(null);
+  const uploading = attachments.some(item => !item.uploaded && !item.error);
+  const attachmentErrors = attachments.some(item => item.error);
   const nextId = useRef(1);
   const sending = useRef(false);
   const controller = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    const controllers = uploadControllers.current;
+    controllers.forEach(item => item.abort());
+    controllers.clear();
+    setAttachments([]);
+    return () => { controllers.forEach(item => item.abort()); controllers.clear(); };
+  }, [projectId, chatId]);
+
+  async function startUpload(item: PendingAttachment) {
+    const abort = new AbortController();
+    uploadControllers.current.set(item.id, abort);
+    setAttachments(previous => previous.map(entry => entry.id === item.id ? {...entry, progress: 0, error: undefined} : entry));
+    try {
+      const uploaded = await uploadProjectFile(projectId, item.original, progress => {
+        if (!abort.signal.aborted) setAttachments(previous => previous.map(entry => entry.id === item.id ? {...entry, progress} : entry));
+      }, abort.signal);
+      if (!abort.signal.aborted) setAttachments(previous => previous.map(entry => entry.id === item.id ? {...entry, uploaded} : entry));
+    } catch (error) {
+      if (!abort.signal.aborted) setAttachments(previous => previous.map(entry => entry.id === item.id ? {...entry, error: error instanceof Error ? error.message : String(error)} : entry));
+    } finally {
+      uploadControllers.current.delete(item.id);
+    }
+  }
+
+  function attachFiles(files: FileList | null) {
+    if (!files || loading || !chatId) return;
+    const selected = Array.from(files).map(original => ({ id: crypto.randomUUID(), original, progress: 0 }));
+    setAttachments(previous => [...previous, ...selected]);
+    selected.forEach(item => { void startUpload(item); });
+  }
+
+  function removeAttachment(id: string) {
+    uploadControllers.current.get(id)?.abort();
+    uploadControllers.current.delete(id);
+    setAttachments(previous => previous.filter(item => item.id !== id));
+  }
 
   // A project has its own chats. Do not automatically recreate deleted chats.
   useEffect(() => {
@@ -97,14 +145,16 @@ export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelPro
 
   async function sendMessage() {
     const content = input.trim();
-    if (!content || !chatId || sending.current) return;
+    if (!content || !chatId || sending.current || uploading || attachmentErrors) return;
+    const sentAttachments = attachments.flatMap(item => item.uploaded ? [item.uploaded] : []);
+    setAttachments([]);
     sending.current = true;
     setLoading(true);setStatus("Connecting to SimAssist...");setError(null);
     setInput("");
     const activeChat = chatId;
     const userId = nextId.current++;
     const assistantId = nextId.current++;
-    setMessages(prev => [...prev,{id:userId,role:"user",content},{id:assistantId,role:"assistant",content:""}]);
+    setMessages(prev => [...prev,{id:userId,role:"user",content,attachments:sentAttachments},{id:assistantId,role:"assistant",content:""}]);
     const abort = new AbortController();controller.current=abort;
     const reported = new Set<string>();
     const report = (jobIds: string[]) => {
@@ -113,7 +163,7 @@ export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelPro
       if (fresh.length) onJobsSubmitted(fresh);
     };
     try {
-      await streamChatMessage({project_id:projectId,chat_id:activeChat,message:content},{
+      await streamChatMessage({project_id:projectId,chat_id:activeChat,message:content,attachments:sentAttachments.map(item => ({file_id:item.file_id}))},{
         onStatus: setStatus,
         onDelta(text) {
           setStatus(null);
@@ -139,13 +189,13 @@ export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelPro
   return <div className="assistant-content">
     <div className="chat-session-toolbar">
       <span>Conversations</span>
-      <button type="button" disabled={loading} onClick={() => void newChat()} title="New chat"><Plus size={15}/> New</button>
+      <button type="button" disabled={loading || uploading} onClick={() => void newChat()} title="New chat"><Plus size={15}/> New</button>
     </div>
     <div className="chat-session-list">
       {chats.map(item => <div key={item.id} className={`chat-session ${item.id===chatId?"selected":""}`}>
-        <button className="chat-session-select" disabled={loading} onClick={() => setChatId(item.id)} title={item.title}>{item.title}</button>
-        <button type="button" disabled={loading} onClick={() => void editChat(item)} title="Rename chat"><Pencil size={12}/></button>
-        <button type="button" disabled={loading} onClick={() => void removeChat(item)} title="Delete chat"><Trash2 size={12}/></button>
+        <button className="chat-session-select" disabled={loading || uploading} onClick={() => setChatId(item.id)} title={item.title}>{item.title}</button>
+        <button type="button" disabled={loading || uploading} onClick={() => void editChat(item)} title="Rename chat"><Pencil size={12}/></button>
+        <button type="button" disabled={loading || uploading} onClick={() => void removeChat(item)} title="Delete chat"><Trash2 size={12}/></button>
       </div>)}
     </div>
     {error && <div className="chat-error" role="alert">{error}</div>}
@@ -154,18 +204,37 @@ export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelPro
       {messages.map(message => <div key={message.id} className={`chat-message ${message.role}`}>
         {message.role==="assistant"?<Bot size={17}/>:<User size={17}/>}
         <div className="message-content">
+          {message.attachments?.map(attachment => <AttachmentChip key={attachment.file_id} attachment={attachment}/>)}
           {message.role==="assistant"?<ReactMarkdown remarkPlugins={[remarkGfm]}>{message.content}</ReactMarkdown>:<p>{message.content}</p>}
           {loading && message.id === nextId.current-1 && !message.content && <span className="streaming-indicator">{status || "Thinking..."}</span>}
         </div>
       </div>)}
       <div ref={bottom}/>
     </div>
+    <div className="chat-composer" onDragOver={event => {
+      if (event.dataTransfer.types.includes("Files")) event.preventDefault();
+    }} onDrop={event => {event.preventDefault(); attachFiles(event.dataTransfer.files);}}>
+      <input ref={filePicker} type="file" accept=".step,.stp" multiple hidden onChange={event => {
+        attachFiles(event.target.files); event.target.value = "";
+      }}/>
+      <div className="pending-attachments">
+        {attachments.map(item => <div key={item.id} className="pending-attachment">
+          {item.uploaded ? <AttachmentChip attachment={item.uploaded}/> : <span className="attachment-name">{item.original.name}</span>}
+          {!item.uploaded && !item.error && <span role="status">{item.progress < 100 ? `Uploading ${item.progress}%` : "Inspecting CAD..."}</span>}
+          {item.error && <><span role="alert" className="attachment-error">{item.error}</span><button type="button" onClick={() => void startUpload(item)}>Retry</button></>}
+          <button type="button" onClick={() => removeAttachment(item.id)} aria-label={`Remove ${item.original.name}`}><X size={14}/></button>
+        </div>)}
+      </div>
     <div className="chat-input-area">
+      <div className="chat-input-field">
       <textarea ref={textarea} rows={1} disabled={loading || !chatId} value={input}
         placeholder={loading?"SimAssist is responding...":"Describe your simulation..."}
         onChange={event => setInput(event.target.value)}
         onKeyDown={event => {if(event.key==="Enter"&&!event.shiftKey&&!event.nativeEvent.isComposing){event.preventDefault();void sendMessage();}}}/>
-      <button type="button" disabled={loading||!chatId||!input.trim()} onClick={()=>void sendMessage()} aria-label="Send message"><Send size={18}/></button>
+      <button className="chat-attach-button" type="button" title="Attach file" aria-label="Attach file" disabled={loading || !chatId} onClick={() => filePicker.current?.click()}><Paperclip size={17}/></button>
+      </div>
+      <button type="button" disabled={loading||uploading||attachmentErrors||!chatId||!input.trim()} onClick={()=>void sendMessage()} aria-label="Send message"><Send size={18}/></button>
+    </div>
     </div>
   </div>;
 }

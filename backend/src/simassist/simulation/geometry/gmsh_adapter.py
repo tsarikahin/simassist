@@ -58,7 +58,22 @@ class GmshGeometryAdapter:
                 self._create_csg(definition)
 
             elif isinstance(definition, CADImportGeometry):
-                raise NotImplementedError("CAD import is not implemented yet.")
+                if definition.artifact_id is None:
+                    raise ValueError(
+                        "Worker must resolve the uploaded file before CAD import"
+                    )
+                original = self.artifact_store.get(definition.artifact_id)
+                if original.project_id != self.project_id:
+                    raise ValueError("CAD source belongs to another project")
+                original_path = self.artifact_store.resolve_path(original.id)
+                if original_path.suffix.lower() not in {".step", ".stp"}:
+                    raise ValueError("Only STEP CAD import is supported")
+                if spec.units.value != "mm":
+                    raise ValueError(
+                        "Imported STEP coordinates are normalized to millimeters"
+                    )
+                gmsh.option.setString("Geometry.OCCTargetUnit", "MM")
+                gmsh.model.occ.importShapes(str(original_path), format="step")
 
             elif isinstance(definition, BooleanGeometry):
                 raise NotImplementedError("Boolean operations are not implemented yet.")
@@ -80,6 +95,10 @@ class GmshGeometryAdapter:
                 project_id=self.project_id,
                 type=ArtifactType.GEOMETRY,
                 source_path=output_path,
+                parent_ids=[spec.definition.artifact_id]
+                if isinstance(spec.definition, CADImportGeometry)
+                and spec.definition.artifact_id
+                else [],
             )
         )
 

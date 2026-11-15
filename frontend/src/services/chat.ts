@@ -7,6 +7,7 @@ export interface ChatRequest {
   chat_id?: string;
   request_id?: string;
   message: string;
+  attachments?: { file_id: string }[];
 }
 
 export interface ChatResponse {

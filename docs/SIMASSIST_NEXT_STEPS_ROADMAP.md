@@ -40,6 +40,17 @@ The user interacts with the system conversationally, but numerical engineering c
 
 **Known integration caveats to confirm in HEAD:** model context currently comes from concatenated recent messages (Phase 11.15 addresses this); agent may describe a geometry from only bounding boxes and misidentify an annulus as a disk; the viewer-selected mesh version may not equal the agent's latest-completed mesh choice; frontend build regressions appeared during earlier patching and must be guarded by CI.
 
+## Phase numbering reconciliation (file upload implementation)
+
+Phase 11.15 conversation memory is implemented. The newer
+`PHASE_11_16_FILE_UPLOAD_AND_CAD_IMPORT.md` assigns **11.16** to file uploads
+and the first STEP import/meshing vertical slice, now implemented; see
+[file-upload.md](file-upload.md) for the shipped scope. The earlier proposed
+11.16 selection-semantics work below remains planned without a phase number.
+Later phase labels in this roadmap are proposals and must be reconciled before
+implementation; IGES/BREP, imported mesh viewing and STL reconstruction are not
+claimed as shipped by this slice.
+
 ## 3. Prioritized phases
 
 ### Phase 11.15 — Agent Conversation Memory & Context Management (NEXT)
@@ -50,7 +61,7 @@ Use the companion document: **`PHASE_11_15_AGENT_CONVERSATION_MEMORY.md`** for i
 
 **Gate:** Independent chats remain isolated; long chats work within local model context; no duplicate mesh/job submissions due to history replay.
 
-### Phase 11.16 — Active Engineering Context & Selection Semantics
+### Planned - Active Engineering Context & Selection Semantics
 
 **Problem:** The viewer may display a selected *older* mesh, while the agent implicitly uses the latest successful mesh. Agent explanations sometimes conflate “no mesh discussed in this chat” with “no mesh in the project.”
 
@@ -162,7 +173,8 @@ Use the companion document: **`PHASE_11_15_AGENT_CONVERSATION_MEMORY.md`** for i
 
 ```mermaid
 flowchart TD
-    A[11.15 Conversation memory] --> B[11.16 Active engineering context]
+    A[11.15 Conversation memory] --> U[11.16 STEP uploads and meshing]
+    U --> B[Planned active engineering context]
     B --> C[11.17 Interactive clarification UI]
     B --> D[11.18 Mesh quality visualization]
     D --> E[11.19 Meshing robustness]

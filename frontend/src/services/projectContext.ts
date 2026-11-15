@@ -20,6 +20,8 @@ export interface ProjectGeometry {
     name?: string;
     definition?: {
       primitive?: string;
+      source?: string;
+      file_id?: string;
     };
     [key: string]: unknown;
   };

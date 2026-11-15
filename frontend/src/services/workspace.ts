@@ -1,7 +1,8 @@
+import type { FileAttachment } from "./files";
 const BASE = import.meta.env.VITE_API_BASE_URL ?? "http://127.0.0.1:8000";
 export type WorkspaceProject = { id: string; name: string; created_at: string };
 export type WorkspaceChat = { id: string; project_id: string; title: string; created_at: string };
-export type StoredMessage = { id: number; role: "assistant" | "user"; content: string };
+export type StoredMessage = { id: number; role: "assistant" | "user"; content: string; attachments?: FileAttachment[] };
 async function request<T>(path: string, method = "GET", body?: object): Promise<T> {
   const response = await fetch(`${BASE}/api/workspace${path}`, {
     method, headers: { "Content-Type": "application/json" },

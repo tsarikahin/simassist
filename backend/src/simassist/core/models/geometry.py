@@ -46,7 +46,16 @@ class PrimitiveGeometry(BaseModel):
 
 class CADImportGeometry(BaseModel):
     source: Literal["cad_import"] = "cad_import"
-    artifact_id: UUID
+    artifact_id: UUID | None = None
+    file_id: UUID | None = None
+
+    @model_validator(mode="after")
+    def validate_reference(self):
+        if (self.artifact_id is None) == (self.file_id is None):
+            raise ValueError(
+                "CAD import requires exactly one artifact_id or uploaded file_id"
+            )
+        return self
 
 
 class BooleanOperation(StrEnum):

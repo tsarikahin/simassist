@@ -6,8 +6,10 @@ import time
 from pathlib import Path
 from uuid import UUID
 
-from simassist.core.models.geometry import GeometrySpec
+from simassist.core.models.artifact import ArtifactCreate, ArtifactType
+from simassist.core.models.geometry import CADImportGeometry, GeometrySpec
 from simassist.core.models.mesh import MeshRequest
+from simassist.files.repository import FileRepository
 from simassist.jobs.models import Job, JobStatus, JobType
 from simassist.jobs.repository import JobRepository
 from simassist.services.factory import create_simulation_service
@@ -102,6 +104,23 @@ class SimulationWorker:
 
             if job.type == JobType.GEOMETRY_CREATE:
                 spec = GeometrySpec.model_validate(job.input)
+                uploaded = None
+                if (
+                    isinstance(spec.definition, CADImportGeometry)
+                    and spec.definition.file_id
+                ):
+                    files = FileRepository(self.data_root)
+                    uploaded = files.get(job.project_id, spec.definition.file_id)
+                    original = self.artifact_store.save(
+                        ArtifactCreate(
+                            project_id=job.project_id,
+                            type=ArtifactType.OTHER,
+                            source_path=files.resolve(
+                                job.project_id, spec.definition.file_id
+                            ),
+                        )
+                    )
+                    spec.definition = CADImportGeometry(artifact_id=original.id)
 
                 result = service.create_geometry(spec)
 
@@ -116,6 +135,12 @@ class SimulationWorker:
                 result_payload = result.model_dump(mode="json")
 
                 result_payload["preview_artifact_id"] = str(preview_artifact_id)
+                if uploaded:
+                    result_payload.update(
+                        source_file_id=uploaded["file_id"],
+                        source_content_hash=uploaded["content_hash"],
+                        units="mm",
+                    )
 
             elif job.type == JobType.MESH_GENERATE:
                 request = self._resolve_mesh_request(job)

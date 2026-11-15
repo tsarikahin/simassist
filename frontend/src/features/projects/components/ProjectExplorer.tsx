@@ -37,7 +37,7 @@ function geometryName(job: ProjectGeometry): string {
     typeof job.input.name === "string" &&
     job.input.name.trim()
   ) {
-    return job.input.name;
+    return job.input.name + (job.input.definition?.source === "cad_import" && !job.input.name.endsWith("[Imported]") ? " [Imported]" : "");
   }
 
   const primitive = job.input.definition?.primitive;

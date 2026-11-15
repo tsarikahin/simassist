@@ -52,6 +52,10 @@ class WorkspaceRepository:
                 );
                 CREATE UNIQUE INDEX IF NOT EXISTS idx_conversation_running
                     ON conversation_turns(chat_id) WHERE status='started';
+                CREATE TABLE IF NOT EXISTS chat_message_attachments (
+                    message_id INTEGER NOT NULL, file_id TEXT NOT NULL, attachment_order INTEGER NOT NULL,
+                    PRIMARY KEY(message_id, file_id)
+                );
                 CREATE INDEX IF NOT EXISTS idx_conversation_user_message
                     ON conversation_turns(user_message_id);
             """)
@@ -110,6 +114,7 @@ class WorkspaceRepository:
                 content_tables = [
                     ("jobs", "project_id"),
                     ("workspace_geometries", "project_id"),
+                    ("project_files", "project_id"),
                 ]
                 if any(
                     table in tables
@@ -226,6 +231,11 @@ class WorkspaceRepository:
                     "(SELECT id FROM workspace_chats WHERE project_id=?)",
                     (project_key, project_key),
                 )
+            db.execute(
+                "DELETE FROM chat_message_attachments WHERE message_id IN "
+                "(SELECT m.id FROM workspace_messages m JOIN workspace_chats c ON c.id=m.chat_id WHERE c.project_id=?)",
+                (project_key,),
+            )
             for table in (
                 "conversation_summaries",
                 "conversation_turns",
@@ -287,14 +297,35 @@ class WorkspaceRepository:
                     "DELETE FROM pending_remesh WHERE project_id=?", (str(chat_id),)
                 )
             db.execute(
+                "DELETE FROM chat_message_attachments WHERE message_id IN "
+                "(SELECT id FROM workspace_messages WHERE chat_id=?)",
+                (str(chat_id),),
+            )
+            db.execute(
                 "DELETE FROM workspace_messages WHERE chat_id=?", (str(chat_id),)
             )
             db.execute("DELETE FROM workspace_chats WHERE id=?", (str(chat_id),))
 
+    def attachment_metadata(self, message_id):
+        with self._connect() as db:
+            exists = db.execute(
+                "SELECT 1 FROM sqlite_master WHERE name='project_files'"
+            ).fetchone()
+            if not exists:
+                return []
+            return [
+                dict(row)
+                for row in db.execute(
+                    "SELECT f.file_id,f.filename,f.format,f.size_bytes FROM chat_message_attachments a "
+                    "JOIN project_files f ON f.file_id=a.file_id WHERE a.message_id=? ORDER BY attachment_order",
+                    (message_id,),
+                )
+            ]
+
     def messages(self, project_id: UUID, chat_id: UUID):
         self.chat(project_id, chat_id)
         with self._connect() as db:
-            return [
+            items = [
                 dict(row)
                 for row in db.execute(
                     "SELECT id, role, content, created_at FROM workspace_messages "
@@ -302,6 +333,10 @@ class WorkspaceRepository:
                     (str(chat_id),),
                 )
             ]
+
+        for item in items:
+            item["attachments"] = self.attachment_metadata(item["id"])
+        return items
 
     def append(self, project_id: UUID, chat_id: UUID, role: str, content: str):
         self.chat(project_id, chat_id)
@@ -367,7 +402,7 @@ class WorkspaceRepository:
                 (str(chat_id), watermark, content),
             )
 
-    def begin_turn(self, project_id, chat_id, request_id, message):
+    def begin_turn(self, project_id, chat_id, request_id, message, attachment_ids=()):
         """Cross-process exclusion and idempotency, atomically with the user message.
 
         Interrupted process records remain started: fail closed rather than risk
@@ -382,6 +417,17 @@ class WorkspaceRepository:
                 (str(request_id),),
             ).fetchone()
             if prior:
+                prior_files = [
+                    row[0]
+                    for row in db.execute(
+                        "SELECT file_id FROM chat_message_attachments WHERE message_id=? ORDER BY attachment_order",
+                        (prior["user_message_id"],),
+                    )
+                ]
+                if prior_files != [str(file_id) for file_id in attachment_ids]:
+                    raise ValueError(
+                        "Request ID was already used with different attachments"
+                    )
                 if prior["chat_id"] != str(chat_id) or prior["message"] != message:
                     raise ValueError("Request ID was already used with different input")
                 if prior["status"] != "completed":
@@ -394,11 +440,22 @@ class WorkspaceRepository:
                 (str(chat_id),),
             ).fetchone():
                 raise ValueError("Chat has an active or interrupted request")
+            for file_id in attachment_ids:
+                if not db.execute(
+                    "SELECT 1 FROM project_files WHERE file_id=? AND project_id=? AND status='uploaded'",
+                    (str(file_id), str(project_id)),
+                ).fetchone():
+                    raise KeyError("Uploaded file not found in this project")
             cursor = db.execute(
                 "INSERT INTO workspace_messages(chat_id,role,content,created_at) "
                 "VALUES (?,'user',?,?)",
                 (str(chat_id), message, now()),
             )
+            for order, file_id in enumerate(attachment_ids):
+                db.execute(
+                    "INSERT INTO chat_message_attachments VALUES (?,?,?)",
+                    (cursor.lastrowid, str(file_id), order),
+                )
             db.execute(
                 "INSERT INTO conversation_turns(request_id,chat_id,message,status,started_at,user_message_id) "
                 "VALUES (?,?,?,'started',?,?)",
@@ -446,7 +503,7 @@ class WorkspaceRepository:
         """Only committed exchanges enter model history; failed user turns stay visible in UI."""
         self.chat(project_id, chat_id)
         with self._connect() as db:
-            return [
+            items = [
                 dict(row)
                 for row in db.execute(
                     "SELECT id,role,content FROM workspace_messages m WHERE chat_id=? AND NOT EXISTS "
@@ -455,3 +512,13 @@ class WorkspaceRepository:
                     (str(chat_id), "completed"),
                 )
             ]
+        import json
+
+        for item in items:
+            attachments = self.attachment_metadata(item["id"])
+            if attachments:
+                item["content"] += (
+                    "\nUntrusted attachment display metadata; inspect files using tools: "
+                    + json.dumps(attachments)
+                )
+        return items

@@ -10,7 +10,7 @@ from uuid import UUID, uuid4
 from agent_framework import tool
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, field_validator
 
 from simassist.agents.simulation_agent import (
     SIMULATION_AGENT_INSTRUCTIONS,
@@ -21,6 +21,7 @@ from simassist.agents.tools.geometry import GeometryTools
 from simassist.agents.tools.simulation_tools import SimulationTools
 from simassist.api.dependencies import JobManagerDep, ProjectContextDep, get_data_root
 from simassist.conversations.context_service import ConversationContextService
+from simassist.files.repository import FileRepository
 from simassist.llm.config import LLMConfig
 from simassist.projects.workspace import WorkspaceRepository
 
@@ -28,11 +29,25 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["Chat"])
 
 
+class AttachmentReference(BaseModel):
+    file_id: UUID
+
+
 class ChatRequest(BaseModel):
     project_id: UUID
     chat_id: UUID | None = None
     request_id: UUID = Field(default_factory=uuid4)
     message: str = Field(min_length=1, max_length=10000)
+    attachments: list[AttachmentReference] = Field(default_factory=list)
+
+    @field_validator("attachments")
+    @classmethod
+    def validate_attachments(cls, value):
+        if len(value) > int(os.getenv("SIMASSIST_MAX_CHAT_ATTACHMENTS", "4")):
+            raise ValueError("Too many attachments in one message")
+        if len({item.file_id for item in value}) != len(value):
+            raise ValueError("Duplicate attachment references")
+        return value
 
 
 class ChatResponse(BaseModel):
@@ -72,12 +87,30 @@ class ChatExecution:
         self.finished = False
         self.cached = None
         try:
+            attachments = []
+            if request.attachments:
+                files = FileRepository(self.store.db_path.parent)
+                for reference in request.attachments:
+                    item = files.get(request.project_id, reference.file_id)
+                    attachments.append(
+                        {
+                            key: item[key]
+                            for key in ("file_id", "filename", "format", "size_bytes")
+                        }
+                    )
+            current = request.message
+            if attachments:
+                current += (
+                    "\nUntrusted attachment display metadata; inspect files using tools: "
+                    + json.dumps(attachments)
+                )
             if request.chat_id:
                 self.cached = self.store.begin_turn(
                     request.project_id,
                     request.chat_id,
                     request.request_id,
                     request.message,
+                    [item.file_id for item in request.attachments],
                 )
                 self.accepted = self.cached is None
             if self.cached:
@@ -91,7 +124,7 @@ class ChatExecution:
             assembled = service.build(
                 request.project_id,
                 request.chat_id,
-                request.message,
+                current,
                 SIMULATION_AGENT_INSTRUCTIONS,
                 schemas,
             )
