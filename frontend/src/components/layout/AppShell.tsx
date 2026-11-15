@@ -20,7 +20,9 @@ import {
   Box,
   Bot,
   FolderTree,
+  Pencil,
   Settings2,
+  Trash2,
 } from "lucide-react";
 
 import { ProjectExplorer } from "../../features/projects/components/ProjectExplorer";
@@ -28,7 +30,7 @@ import { SimulationViewer } from "../../features/viewer/components/SimulationVie
 import { AssistantPanel } from "../../features/assistant/components/AssistantPanel";
 import { SolverConsole } from "../../features/solver/components/SolverConsole";
 
-import { createProject, listProjects, openLegacyProject, type WorkspaceProject } from "../../services/workspace";
+import { createProject, deleteProject, listProjects, openDefaultProject, openLegacyProject, renameProject, type WorkspaceProject } from "../../services/workspace";
 
 
 const STORAGE_KEY = "simassist.workspace.layout.v1";
@@ -127,32 +129,40 @@ function getAvailableWidth(
 }
 
 // React StrictMode may replay mounting effects in development.
-// Reuse the same creation request to avoid two fresh projects per page load.
+// Reuse the same startup request while the backend atomically reuses an empty default.
 let bootPromise: Promise<[WorkspaceProject[], WorkspaceProject]> | null = null;
 
 export function AppShell() {
   const [projectId, setProjectId] = useState("");
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+  const [editingProjectName, setEditingProjectName] = useState<string | null>(null);
+  const [savingProjectName, setSavingProjectName] = useState(false);
+  const [deletingProject, setDeletingProject] = useState(false);
+  const projectBusy = savingProjectName || deletingProject;
 
   useEffect(() => {
-    // A fresh empty project on every app load. Existing projects remain selectable.
+    // Empty auto-created chats do not require another untitled project on refresh.
     let mounted = true;
     if (!bootPromise) {
-      bootPromise = Promise.all([listProjects(), createProject()]).catch(error => {
+      bootPromise = openDefaultProject().then(async project => {
+        return [await listProjects(), project] as [WorkspaceProject[], WorkspaceProject];
+      }).catch(error => {
         bootPromise = null;
         throw error;
       });
     }
-    void bootPromise.then(([previous, fresh]) => {
+    void bootPromise.then(([available, selected]) => {
       if (!mounted) return;
-      setProjects([fresh, ...previous]);
-      setProjectId(fresh.id);
+      setProjects(available);
+      setProjectId(selected.id);
     }).catch(error => {if (mounted) setWorkspaceError(String(error));});
     return () => {mounted = false;};
   }, []);
 
   const switchProject = (id: string) => {
+    setEditingProjectName(null);
+    setWorkspaceError(null);
     setProjectId(id);
     setActiveGeometryJobId(null);
     setPreviewArtifactId(null);
@@ -162,6 +172,46 @@ export function AppShell() {
     setMeshCompletionRevision(0);
     navigateViewer("geometry");
   };
+
+  async function saveProjectName() {
+    const name = editingProjectName?.trim();
+    if (!name || savingProjectName) return;
+    const id = projectId;
+    setSavingProjectName(true);
+    setWorkspaceError(null);
+    try {
+      await renameProject(id, name);
+      setProjects(current => current.map(project => project.id === id ? {...project, name} : project));
+      setEditingProjectName(null);
+    } catch (error) {
+      setWorkspaceError(String(error));
+    } finally {
+      setSavingProjectName(false);
+    }
+  }
+
+  async function removeProject() {
+    const selected = projects.find(project => project.id === projectId);
+    if (!selected || projectBusy) return;
+    if (!window.confirm(`Delete project "${selected.name}" and all its chat histories? This cannot be undone. Saved job records and simulation files will remain on disk.`)) return;
+    setDeletingProject(true);
+    setWorkspaceError(null);
+    try {
+      await deleteProject(selected.id);
+      const remaining = projects.filter(project => project.id !== selected.id);
+      setProjects(remaining);
+      switchProject(remaining[0]?.id ?? "");
+      if (!remaining.length) {
+        const replacement = await openDefaultProject();
+        setProjects([replacement]);
+        switchProject(replacement.id);
+      }
+    } catch (error) {
+      setWorkspaceError(String(error));
+    } finally {
+      setDeletingProject(false);
+    }
+  }
 
   const [previewArtifactId, setPreviewArtifactId] =
     useState<string | null>(null);
@@ -589,18 +639,38 @@ export function AppShell() {
           </div>
 
           <div className="workspace-project-switcher">
-            <select aria-label="Select project" value={projectId} onChange={event => switchProject(event.target.value)}>
+            <select aria-label="Select project" disabled={projectBusy} value={projectId} onChange={event => switchProject(event.target.value)}>
               {projects.map(project => <option key={project.id} value={project.id}>{project.name} ({project.id.slice(0, 6)})</option>)}
             </select>
-            <button type="button" title="Create empty project" onClick={() => void createProject().then(project => {
+            <button type="button" title="Rename project" aria-label="Rename project" disabled={!projectId || projectBusy} onClick={() => {
+              setWorkspaceError(null);
+              setEditingProjectName(projects.find(project => project.id === projectId)?.name ?? "");
+            }}><Pencil size={14} /></button>
+            <button type="button" className="workspace-delete-project" title="Delete project" aria-label="Delete project" disabled={!projectId || projectBusy} onClick={() => void removeProject()}><Trash2 size={14} /></button>
+            <button type="button" disabled={projectBusy} title="Create empty project" onClick={() => void createProject().then(project => {
               setProjects(current => [project, ...current]);
               switchProject(project.id);
             }).catch(error => setWorkspaceError(String(error)))}>+ Project</button>
-            <button type="button" title="Open previously existing demo project" onClick={() => void openLegacyProject().then(project => {
+            <button type="button" disabled={projectBusy} title="Open previously existing demo project" onClick={() => void openLegacyProject().then(project => {
               setProjects(current => [project, ...current.filter(item => item.id !== project.id)]);
               switchProject(project.id);
             }).catch(error => setWorkspaceError(String(error)))}>Legacy</button>
           </div>
+          {editingProjectName !== null && <form className="workspace-project-name" onSubmit={event => {
+            event.preventDefault();
+            void saveProjectName();
+          }}>
+            <label htmlFor="project-name">Project name</label>
+            <input id="project-name" autoFocus required maxLength={120} value={editingProjectName}
+              disabled={projectBusy} onChange={event => setEditingProjectName(event.target.value)}
+              onKeyDown={event => {
+                if (event.key === "Escape" && !projectBusy) setEditingProjectName(null);
+              }} />
+            <div>
+              <button type="submit" disabled={projectBusy || !editingProjectName.trim()}>{savingProjectName ? "Saving…" : "Save"}</button>
+              <button type="button" disabled={projectBusy} onClick={() => setEditingProjectName(null)}>Cancel</button>
+            </div>
+          </form>}
           {workspaceError && <p role="alert" style={{fontSize:12,color:"#fb7185"}}>{workspaceError}</p>}
           {projectId && <ProjectExplorer
             projectId={projectId}

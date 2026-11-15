@@ -1,9 +1,6 @@
 from __future__ import annotations
 
 from uuid import UUID
-from simassist.projects.workspace import WorkspaceRepository
-from simassist.api.dependencies import get_data_root
-from simassist.jobs.models import JobStatus, JobType
 
 from fastapi import APIRouter, HTTPException
 from pydantic import BaseModel, Field
@@ -11,9 +8,11 @@ from pydantic import BaseModel, Field
 from simassist.api.dependencies import (
     JobManagerDep,
     ProjectContextDep,
+    get_data_root,
 )
 from simassist.jobs.models import Job, JobStatus, JobType
 from simassist.projects.context import ProjectContext
+from simassist.projects.workspace import WorkspaceRepository
 
 router = APIRouter(
     prefix="/api/projects/{project_id}",

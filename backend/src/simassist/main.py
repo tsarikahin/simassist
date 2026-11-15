@@ -13,7 +13,6 @@ from simassist.api.routes.mesh_previews import router as mesh_previews_router
 from simassist.api.routes.mesh_quality import router as mesh_quality_router
 from simassist.api.routes.mesh_versions import router as mesh_versions_router
 from simassist.api.routes.projects import router as projects_router
-
 from simassist.api.routes.workspace import router as workspace_router
 
 app = FastAPI(

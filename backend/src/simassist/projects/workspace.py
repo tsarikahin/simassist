@@ -78,6 +78,63 @@ class WorkspaceRepository:
             )
         return item
 
+    def open_default_project(self):
+        """Reuse an untouched default project, including auto-created empty chats.
+
+        Claim/create in one write transaction so simultaneous page loads do not
+        create duplicate defaults. Existing projects and engineering data stay intact.
+        Optional engineering tables may not exist in a new workspace database yet.
+        """
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            tables = {
+                row[0]
+                for row in db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            candidates = db.execute(
+                "SELECT * FROM workspace_projects WHERE name='Untitled Project' COLLATE NOCASE "
+                "ORDER BY created_at DESC, id DESC"
+            ).fetchall()
+            for project in candidates:
+                project_id = project["id"]
+                has_messages = db.execute(
+                    "SELECT 1 FROM workspace_messages m JOIN workspace_chats c ON c.id=m.chat_id "
+                    "WHERE c.project_id=? LIMIT 1",
+                    (project_id,),
+                ).fetchone()
+                if has_messages:
+                    continue
+                # Identifiers below are fixed internal schema names, never user input.
+                content_tables = [
+                    ("jobs", "project_id"),
+                    ("workspace_geometries", "project_id"),
+                ]
+                if any(
+                    table in tables
+                    and db.execute(
+                        f"SELECT 1 FROM {table} WHERE {column}=? LIMIT 1", (project_id,)
+                    ).fetchone()
+                    for table, column in content_tables
+                ):
+                    continue
+                if (
+                    "project_context" in tables
+                    and db.execute(
+                        "SELECT 1 FROM project_context WHERE project_id=? AND "
+                        "(active_geometry_job_id IS NOT NULL OR active_geometry_artifact_id IS NOT NULL)",
+                        (project_id,),
+                    ).fetchone()
+                ):
+                    continue
+                return dict(project)
+            item = {"id": str(uuid4()), "name": "Untitled Project", "created_at": now()}
+            db.execute(
+                "INSERT INTO workspace_projects VALUES (:id,:name,:created_at)", item
+            )
+            return item
+
     def import_legacy(self):
         item = {
             "id": "11111111-1111-4111-8111-111111111111",
@@ -105,6 +162,10 @@ class WorkspaceRepository:
 
     def chats(self, project_id: UUID):
         with self._connect() as db:
+            if not db.execute(
+                "SELECT 1 FROM workspace_projects WHERE id=?", (str(project_id),)
+            ).fetchone():
+                raise KeyError("Project not found")
             return [
                 dict(row)
                 for row in db.execute(
@@ -121,11 +182,69 @@ class WorkspaceRepository:
             "created_at": now(),
         }
         with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if not db.execute(
+                "SELECT 1 FROM workspace_projects WHERE id=?", (str(project_id),)
+            ).fetchone():
+                raise KeyError("Project not found")
             db.execute(
                 "INSERT INTO workspace_chats VALUES (:id,:project_id,:title,:created_at)",
                 item,
             )
         return item
+
+    def delete_project(self, project_id: UUID):
+        """Delete workspace ownership and dialogue atomically, retaining jobs/files.
+
+        The same write lock as begin_turn/new_chat prevents deletion racing with
+        accepted requests or leaving a newly created orphan chat behind.
+        """
+        project_key = str(project_id)
+        with self._connect() as db:
+            db.execute("BEGIN IMMEDIATE")
+            if not db.execute(
+                "SELECT 1 FROM workspace_projects WHERE id=?", (project_key,)
+            ).fetchone():
+                raise KeyError("Project not found")
+            if db.execute(
+                "SELECT 1 FROM conversation_turns t JOIN workspace_chats c ON c.id=t.chat_id "
+                "WHERE c.project_id=? AND t.status='started' LIMIT 1",
+                (project_key,),
+            ).fetchone():
+                raise ValueError(
+                    "Project has an active or interrupted chat request. Finish or reconcile it before deleting the project."
+                )
+            tables = {
+                row[0]
+                for row in db.execute(
+                    "SELECT name FROM sqlite_master WHERE type='table'"
+                )
+            }
+            if "pending_remesh" in tables:
+                db.execute(
+                    "DELETE FROM pending_remesh WHERE project_id=? OR project_id IN "
+                    "(SELECT id FROM workspace_chats WHERE project_id=?)",
+                    (project_key, project_key),
+                )
+            for table in (
+                "conversation_summaries",
+                "conversation_turns",
+                "workspace_messages",
+            ):
+                db.execute(
+                    f"DELETE FROM {table} WHERE chat_id IN "
+                    "(SELECT id FROM workspace_chats WHERE project_id=?)",
+                    (project_key,),
+                )
+            db.execute("DELETE FROM workspace_chats WHERE project_id=?", (project_key,))
+            db.execute(
+                "DELETE FROM workspace_geometries WHERE project_id=?", (project_key,)
+            )
+            if "project_context" in tables:
+                db.execute(
+                    "DELETE FROM project_context WHERE project_id=?", (project_key,)
+                )
+            db.execute("DELETE FROM workspace_projects WHERE id=?", (project_key,))
 
     def chat(self, project_id: UUID, chat_id: UUID):
         with self._connect() as db:

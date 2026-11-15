@@ -35,6 +35,12 @@ def import_legacy():
     return repo().import_legacy()
 
 
+@router.post("/projects/default")
+def open_default_project():
+    """Open an empty untitled project, creating one only when needed."""
+    return repo().open_default_project()
+
+
 @router.patch("/projects/{project_id}")
 def rename_project(project_id: UUID, body: NameRequest):
     try:
@@ -46,12 +52,29 @@ def rename_project(project_id: UUID, body: NameRequest):
 
 @router.get("/projects/{project_id}/chats")
 def chats(project_id: UUID):
-    return repo().chats(project_id)
+    try:
+        return repo().chats(project_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
 
 
 @router.post("/projects/{project_id}/chats")
 def new_chat(project_id: UUID):
-    return repo().new_chat(project_id)
+    try:
+        return repo().new_chat(project_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+
+
+@router.delete("/projects/{project_id}")
+def delete_project(project_id: UUID):
+    try:
+        repo().delete_project(project_id)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
+    except ValueError as exc:
+        raise HTTPException(status_code=409, detail=str(exc)) from exc
+    return {"ok": True}
 
 
 @router.get("/projects/{project_id}/chats/{chat_id}/messages")

@@ -12,7 +12,9 @@ async function request<T>(path: string, method = "GET", body?: object): Promise<
 }
 export const listProjects = () => request<WorkspaceProject[]>("/projects");
 export const createProject = (name = "Untitled Project") => request<WorkspaceProject>("/projects", "POST", {name});
+export const openDefaultProject = () => request<WorkspaceProject>("/projects/default", "POST");
 export const renameProject = (id: string, name: string) => request<{ok:boolean}>(`/projects/${id}`, "PATCH", {name});
+export const deleteProject = (id: string) => request<{ok:boolean}>(`/projects/${id}`, "DELETE");
 export const listChats = (projectId: string) => request<WorkspaceChat[]>(`/projects/${projectId}/chats`);
 export const createChat = (projectId: string) => request<WorkspaceChat>(`/projects/${projectId}/chats`, "POST");
 export const renameChat = (projectId: string, chatId: string, name: string) => request<{ok:boolean}>(`/projects/${projectId}/chats/${chatId}`, "PATCH", {name});

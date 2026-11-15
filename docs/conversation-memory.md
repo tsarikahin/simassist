@@ -4,6 +4,17 @@ Each chat has independent messages and memory. Chats in the same project share
 geometry, meshes and artifacts through backend tools. Starting a new chat does
 not copy another chat's dialogue. Current geometry selection, latest completed
 mesh, verification results and pending remesh proposals remain backend truth.
+On page load, SimAssist reuses the newest empty **Untitled Project** before
+creating another. Automatically created chats without messages count as empty;
+projects containing messages, jobs or geometry references are preserved.
+**+ Project** always creates a new project. To name the selected project, click
+the pencil beside the project selector, enter a name, then click **Save**.
+The trash button beside the selector deletes the selected project and all its
+chat histories and memory after confirmation. Job records and simulation files
+remain on disk. Active or unreconciled chat requests block deletion. The app
+opens another project afterwards, or an empty untitled project if none remain.
+The **Legacy** button can explicitly reimport retained demo engineering jobs;
+deleted conversations are not restored.
 Viewer mesh selection is not yet synchronized to the agent; mesh inspection
 uses the latest completed mesh of the active geometry and discloses that source.
 
