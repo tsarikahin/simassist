@@ -571,6 +571,7 @@ export function AppShell() {
             <SimulationViewer
               projectId={DEMO_PROJECT_ID}
               previewArtifactId={previewArtifactId}
+              geometryJobId={activeGeometryJobId}
             />
           </div>
 

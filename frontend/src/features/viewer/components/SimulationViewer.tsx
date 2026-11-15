@@ -1,6 +1,7 @@
 
 import { useEffect, useRef, useState } from "react";
-import { Maximize2, RotateCcw } from "lucide-react";
+import { Maximize2, RotateCcw, RefreshCw } from "lucide-react";
+import { getLatestMeshPreview } from "../../../services/meshPreviews";
 
 import "@kitware/vtk.js/Rendering/Profiles/All";
 
@@ -21,6 +22,7 @@ type VtkInstance = ReturnType<
 interface SimulationViewerProps {
   projectId: string;
   previewArtifactId: string | null;
+  geometryJobId?: string | null;
 }
 
 function createPolyData(preview: GeometryPreview) {
@@ -61,10 +63,13 @@ function createPolyData(preview: GeometryPreview) {
 export function SimulationViewer({
   projectId,
   previewArtifactId,
+  geometryJobId,
 }: SimulationViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const vtkRef = useRef<VtkInstance | null>(null);
 
+  const [viewMode, setViewMode] = useState<"geometry" | "mesh">("geometry");
+  const [meshRevision, setMeshRevision] = useState(0);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [geometry, setGeometry] = useState<{
@@ -109,7 +114,10 @@ export function SimulationViewer({
     renderer.removeAllViewProps();
     renderWindow.render();
 
-    if (!previewArtifactId) {
+    if (viewMode === "geometry" ? !previewArtifactId : !geometryJobId) {
+      setLoading(false);
+      setError(null);
+      setGeometry(null);
       return;
     }
 
@@ -129,11 +137,9 @@ export function SimulationViewer({
       setGeometry(null);
 
       try {
-        const preview = await getGeometryPreview(
-          projectId,
-          previewArtifactId!,
-          controller.signal,
-        );
+        const preview = viewMode === "mesh"
+          ? await getLatestMeshPreview(projectId, geometryJobId!, controller.signal)
+          : await getGeometryPreview(projectId, previewArtifactId!, controller.signal);
 
         if (disposed) return;
 
@@ -151,6 +157,11 @@ export function SimulationViewer({
         property.setSpecular(0.3);
         property.setSpecularPower(25);
         property.setInterpolationToPhong();
+        if (viewMode === "mesh") {
+          property.setEdgeVisibility(true);
+          property.setEdgeColor(0.05, 0.13, 0.22);
+          property.setLineWidth(1.2);
+        }
 
         renderer.addActor(actor);
 
@@ -184,7 +195,7 @@ export function SimulationViewer({
         renderWindow.render();
 
         setGeometry({
-          artifactId: previewArtifactId!,
+          artifactId: viewMode === "mesh" ? geometryJobId! : previewArtifactId!,
           pointCount: preview.point_count,
           triangleCount: preview.triangle_count,
         });
@@ -215,7 +226,7 @@ export function SimulationViewer({
       mapper?.delete();
       polyData?.delete();
     };
-  }, [projectId, previewArtifactId]);
+  }, [projectId, previewArtifactId, geometryJobId, viewMode, meshRevision]);
 
   function resetCamera() {
     vtkRef.current?.getRenderer().resetCamera();
@@ -227,14 +238,35 @@ export function SimulationViewer({
   }
 
   const currentGeometry =
-    geometry?.artifactId === previewArtifactId
+    geometry?.artifactId === (viewMode === "mesh" ? geometryJobId : previewArtifactId)
       ? geometry
       : null;
 
   return (
     <div className="simulation-viewer">
       <div className="viewer-toolbar">
-        <span>3D Viewport</span>
+          <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
+            <span>3D Viewport</span>
+            <div role="group" aria-label="Viewer mode" style={{ display: "flex", gap: 4 }}>
+              <button type="button" aria-pressed={viewMode === "geometry"}
+                onClick={() => setViewMode("geometry")}
+                style={{ color: viewMode === "geometry" ? "#60a5fa" : "inherit" }}>
+                Geometry
+              </button>
+              <button type="button" aria-pressed={viewMode === "mesh"}
+                disabled={!geometryJobId}
+                onClick={() => setViewMode("mesh")}
+                style={{ color: viewMode === "mesh" ? "#60a5fa" : "inherit" }}>
+                Mesh
+              </button>
+              {viewMode === "mesh" && (
+                <button type="button" aria-label="Refresh mesh" title="Refresh mesh"
+                  onClick={() => setMeshRevision((value) => value + 1)}>
+                  <RefreshCw size={15} />
+                </button>
+              )}
+            </div>
+          </div>
 
         <div className="viewer-tools">
           <button
@@ -263,10 +295,10 @@ export function SimulationViewer({
           className="vtk-render-surface"
         />
 
-        {!previewArtifactId && (
+        {!(viewMode === "mesh" ? geometryJobId : previewArtifactId) && (
           <div className="viewer-empty-state">
             <h3>No geometry loaded</h3>
-            <p>Create or import a geometry to get started.</p>
+            <p>Select an existing geometry or create a new one.</p>
           </div>
         )}
 
@@ -287,12 +319,12 @@ export function SimulationViewer({
       <div className="viewer-footer">
         <span>
           {currentGeometry
-            ? `Points: ${currentGeometry.pointCount}`
+            ? `${viewMode === "mesh" ? "Surface points" : "Points"}: ${currentGeometry.pointCount}`
             : "Geometry: None"}
         </span>
         <span>
           {currentGeometry
-            ? `Triangles: ${currentGeometry.triangleCount}`
+            ? `${viewMode === "mesh" ? "Surface mesh triangles" : "Triangles"}: ${currentGeometry.triangleCount}`
             : "Units: Not specified"}
         </span>
       </div>
