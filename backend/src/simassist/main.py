@@ -31,6 +31,7 @@ app.add_middleware(
     ],
     allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
     allow_headers=["Content-Type"],
+    expose_headers=["Server-Timing", "Content-Length", "X-Preview-Cache"],
 )
 app.add_middleware(UploadLimitMiddleware)
 

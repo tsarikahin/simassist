@@ -181,6 +181,22 @@ class SimulationWorker:
                 error=str(exc),
             )
 
+        if job.type == JobType.MESH_GENERATE:
+            # Derived preview failure must never invalidate a verified mesh.
+            from simassist.simulation.visualization.preview_cache import (
+                cached_mesh_preview,
+            )
+
+            try:
+                mesh_id = UUID(str(result_payload["artifact_id"]))
+                cached_mesh_preview(self.artifact_store.resolve_path(mesh_id), mesh_id)
+            except Exception as exc:  # noqa: BLE001 - optional derived cache
+                logger.warning(
+                    "Mesh preview precompute skipped job=%s error_type=%s",
+                    job.id,
+                    type(exc).__name__,
+                )
+
         updated = self.repository.complete(
             job.id,
             result=result_payload,

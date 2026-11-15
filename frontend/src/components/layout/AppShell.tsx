@@ -170,6 +170,7 @@ export function AppShell() {
     setProjectError(null);
     setProjectRevision(r => r + 1);
     setMeshCompletionRevision(0);
+    setViewerSelectedMeshId(null);
     navigateViewer("geometry");
   };
 
@@ -223,6 +224,7 @@ export function AppShell() {
     useState<string | null>(null);
 
   const [projectRevision, setProjectRevision] = useState(0);
+  const [viewerSelectedMeshId, setViewerSelectedMeshId] = useState<string | null>(null);
   const [meshCompletionRevision, setMeshCompletionRevision] = useState(0);
   const [viewerNavigation, setViewerNavigation] = useState<{
     mode: "geometry" | "mesh";
@@ -677,11 +679,14 @@ export function AppShell() {
             activeGeometryJobId={activeGeometryJobId}
             revision={projectRevision}
             meshRevision={meshCompletionRevision}
+            selectedMeshJobId={viewerSelectedMeshId}
             onSelectGeometry={(geometry) => {
+              setViewerSelectedMeshId(null);
               navigateViewer("geometry");
               void handleSelectGeometry(geometry);
             }}
             onSelectMesh={(geometry, meshJobId) => {
+              setViewerSelectedMeshId(meshJobId);
               navigateViewer("mesh", meshJobId);
               void handleSelectGeometry(geometry);
             }}
@@ -722,6 +727,7 @@ export function AppShell() {
               geometryJobId={activeGeometryJobId}
               refreshRevision={meshCompletionRevision}
               navigation={viewerNavigation}
+              onSelectedMesh={setViewerSelectedMeshId}
             />}
           </div>
 

@@ -1,3 +1,4 @@
+import { fetchPreview } from "./previewRequests";
 import type { MeshSurfacePreview } from "./meshPreviews";
 
 const API_URL =
@@ -48,17 +49,7 @@ export async function getMeshVersionPreview(
   meshJobId: string,
   signal?: AbortSignal,
 ): Promise<MeshSurfacePreview> {
-  const response = await fetch(
-    `${API_URL}/api/projects/${projectId}/geometries/${geometryJobId}` +
-      `/meshes/${meshJobId}/preview`,
-    { signal },
-  );
-  if (!response.ok) {
-    throw new Error(`Mesh preview failed: HTTP ${response.status}`);
-  }
-  const data: unknown = await response.json();
-  if (!data || typeof data !== "object" || !Array.isArray((data as MeshSurfacePreview).points)) {
-    throw new Error("Invalid mesh preview");
-  }
-  return data as MeshSurfacePreview;
+  return await fetchPreview(
+    `${API_URL}/api/projects/${projectId}/geometries/${geometryJobId}/meshes/${meshJobId}/preview`, signal,
+  ) as MeshSurfacePreview;
 }

@@ -28,6 +28,7 @@ interface ProjectExplorerProps {
   onSelectGeometry: (geometry: ProjectGeometry) => void;
   onSelectMesh: (geometry: ProjectGeometry, meshJobId: string) => void;
   meshRevision?: number;
+  selectedMeshJobId?: string | null;
   selectionError?: string | null;
   onGeometryChanged: (deletedJobId?: string) => void;
 }
@@ -56,6 +57,7 @@ export function ProjectExplorer({
   onSelectGeometry,
   onSelectMesh,
   meshRevision = 0,
+  selectedMeshJobId,
   selectionError,
   onGeometryChanged,
 }: ProjectExplorerProps) {
@@ -215,12 +217,12 @@ export function ProjectExplorer({
                   setSelectedMeshId(null);
                   onSelectGeometry(geometry);
                 }} title={`Show geometry: ${geometryName(geometry)}`}
-                  aria-pressed={selected && selectedMeshId === null}
+                  aria-pressed={selected && (selectedMeshJobId ?? selectedMeshId) === null}
                   className="geometry-tree-label"
                   style={{display:"flex",alignItems:"center",gap:8,flex:1,minWidth:0,
                     padding:"8px 4px",border:"none",
-                    borderLeft:selected && selectedMeshId === null ? "3px solid #60a5fa" : "3px solid transparent",
-                    borderRadius:4,background:selected && selectedMeshId === null ? "rgba(96,165,250,0.12)" : "transparent",
+                    borderLeft:selected && (selectedMeshJobId ?? selectedMeshId) === null ? "3px solid #60a5fa" : "3px solid transparent",
+                    borderRadius:4,background:selected && (selectedMeshJobId ?? selectedMeshId) === null ? "rgba(96,165,250,0.12)" : "transparent",
                     color:"inherit",cursor:"pointer",textAlign:"left",fontSize:12}}>
                   <Box size={14} style={{flexShrink:0}}/>
                   <span style={{overflow:"hidden",textOverflow:"ellipsis",whiteSpace:"nowrap"}}>{geometryName(geometry)}</span>
@@ -253,7 +255,7 @@ export function ProjectExplorer({
                   {!meshLoading && !meshError && versions.length===0 && <div className="geometry-mesh-hint">No mesh versions</div>}
                   {!meshLoading && !meshError && versions.map((mesh, index) => (
                     <button type="button" key={mesh.job_id} className="geometry-mesh-version"
-                      aria-pressed={selected && selectedMeshId === mesh.job_id}
+                      aria-pressed={selected && (selectedMeshJobId ?? selectedMeshId) === mesh.job_id}
                       title={`Mesh job ${mesh.job_id}`}
                       onClick={() => {
                         setSelectedMeshId(mesh.job_id);

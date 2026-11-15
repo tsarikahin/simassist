@@ -5,9 +5,9 @@ from uuid import UUID
 from fastapi import APIRouter, HTTPException
 
 from simassist.api.dependencies import ArtifactStoreDep, JobManagerDep
-from simassist.api.routes.mesh_previews import build_mesh_preview
 from simassist.core.models.artifact import ArtifactType
 from simassist.jobs.models import Job, JobStatus, JobType
+from simassist.simulation.visualization.preview_cache import cached_mesh_preview
 
 router = APIRouter(prefix="/api/projects/{project_id}", tags=["Mesh versions"])
 
@@ -110,7 +110,7 @@ def get_mesh_version_preview(
         path = store.resolve_path(artifact_id)
         if path.suffix.lower() != ".msh":
             raise HTTPException(status_code=422, detail="Expected .msh artifact")
-        preview = build_mesh_preview(path)
+        preview = cached_mesh_preview(path, artifact_id)
     except (KeyError, FileNotFoundError) as exc:
         raise HTTPException(status_code=404, detail="Mesh artifact missing") from exc
     except OverflowError as exc:
@@ -119,4 +119,4 @@ def get_mesh_version_preview(
         raise HTTPException(
             status_code=422, detail=f"Mesh preview failed: {exc}"
         ) from exc
-    return {**preview, "mesh_job_id": str(job.id), "mesh_artifact_id": str(artifact_id)}
+    return preview.response(job.id, artifact_id)

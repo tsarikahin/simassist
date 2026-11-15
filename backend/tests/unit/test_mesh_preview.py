@@ -96,7 +96,10 @@ def test_mesh_preview_lookup_uses_selected_geometry(tmp_path):
         parent_ids=[geometry_artifact],
     )
     store.resolve_path.return_value = path
-    result = get_latest_mesh_preview(project_id, geometry_id, manager, store)
+    import json
+
+    response = get_latest_mesh_preview(project_id, geometry_id, manager, store)
+    result = json.loads(response.body)
     assert result["mesh_job_id"] == str(mesh_job.id)
     assert result["triangle_count"] == 6
 

@@ -20,3 +20,8 @@ data/cache/
 # SimAssist runtime data
 /data/*
 !/data/.gitkeep
+
+# Disposable performance fixtures and browser output
+.benchmarks/
+frontend/test-results/
+frontend/playwright-report/
