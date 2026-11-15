@@ -121,6 +121,34 @@ class GmshGeometryAdapter:
                 parameters["height"],
             )
 
+        elif definition.primitive == PrimitiveType.LINE:
+            length = parameters["length"]
+            p0 = gmsh.model.occ.addPoint(origin.x, origin.y, origin.z)
+            p1 = gmsh.model.occ.addPoint(origin.x + length, origin.y, origin.z)
+            gmsh.model.occ.addLine(p0, p1)
+
+        elif definition.primitive in (PrimitiveType.SQUARE, PrimitiveType.RECTANGLE):
+            gmsh.model.occ.addRectangle(
+                origin.x,
+                origin.y,
+                origin.z,
+                parameters["size"]
+                if definition.primitive == PrimitiveType.SQUARE
+                else parameters["width"],
+                parameters["size"]
+                if definition.primitive == PrimitiveType.SQUARE
+                else parameters["height"],
+            )
+
+        elif definition.primitive == PrimitiveType.DISK:
+            gmsh.model.occ.addDisk(
+                origin.x,
+                origin.y,
+                origin.z,
+                parameters["radius"],
+                parameters["radius"],
+            )
+
         elif definition.primitive == PrimitiveType.CYLINDER:
             gmsh.model.occ.addCylinder(
                 origin.x,
@@ -149,26 +177,25 @@ class GmshGeometryAdapter:
 
         volumes = gmsh.model.getEntities(dim=3)
         surfaces = gmsh.model.getEntities(dim=2)
-
-        bounds = [gmsh.model.getBoundingBox(dim, tag) for dim, tag in volumes]
-
-        if not bounds:
-            return GeometryMetadata(
-                volume_count=0,
-                surface_count=len(surfaces),
-            )
-
+        curves = gmsh.model.getEntities(dim=1)
+        dimension = 3 if volumes else 2 if surfaces else 1 if curves else 0
+        if dimension == 0:
+            raise ValueError("Geometry contains no curves, surfaces or volumes")
+        entities = gmsh.model.getEntities(dim=dimension)
+        bounds = [gmsh.model.getBoundingBox(dim, tag) for dim, tag in entities]
         return GeometryMetadata(
+            dimension=dimension,
+            curve_count=len(curves),
             volume_count=len(volumes),
             surface_count=len(surfaces),
             bounding_box_min=Vector3D(
-                x=min(bound[0] for bound in bounds),
-                y=min(bound[1] for bound in bounds),
-                z=min(bound[2] for bound in bounds),
+                x=min(b[0] for b in bounds),
+                y=min(b[1] for b in bounds),
+                z=min(b[2] for b in bounds),
             ),
             bounding_box_max=Vector3D(
-                x=max(bound[3] for bound in bounds),
-                y=max(bound[4] for bound in bounds),
-                z=max(bound[5] for bound in bounds),
+                x=max(b[3] for b in bounds),
+                y=max(b[4] for b in bounds),
+                z=max(b[5] for b in bounds),
             ),
         )

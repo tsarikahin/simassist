@@ -30,6 +30,10 @@ class PrimitiveType(StrEnum):
     BOX = "box"
     CYLINDER = "cylinder"
     SPHERE = "sphere"
+    LINE = "line"
+    RECTANGLE = "rectangle"
+    SQUARE = "square"
+    DISK = "disk"
 
 
 class PrimitiveGeometry(BaseModel):
@@ -76,6 +80,8 @@ class GeometryCreateRequest(BaseModel):
 
 
 class GeometryMetadata(BaseModel):
+    dimension: int = Field(default=3, ge=1, le=3)
+    curve_count: int = Field(default=0, ge=0)
     volume_count: int = Field(default=0, ge=0)
     surface_count: int = Field(default=0, ge=0)
     bounding_box_min: Vector3D | None = None

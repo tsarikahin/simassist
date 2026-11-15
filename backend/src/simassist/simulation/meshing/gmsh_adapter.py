@@ -35,11 +35,10 @@ class GmshMeshingAdapter:
         return "gmsh"
 
     def generate(self, request: MeshRequest) -> MeshResult:
-        if request.settings.element_family != MeshElementFamily.TETRAHEDRAL:
+        settings = request.settings
+        if settings.element_family == MeshElementFamily.HEXAHEDRAL:
             raise ValueError(
-                "The Gmsh adapter currently supports tetrahedral "
-                "3D meshing only. Hexahedral meshing requires "
-                "a different meshing strategy or engine."
+                "Hexahedral 3D meshing is not supported by this Gmsh adapter"
             )
         geometry = self.artifact_store.get(request.geometry_artifact_id)
 
@@ -68,7 +67,15 @@ class GmshMeshingAdapter:
             gmsh.model.occ.importShapes(str(geometry_path))
             gmsh.model.occ.synchronize()
 
-            settings = request.settings
+            available_dimension = max(
+                (d for d in (1, 2, 3) if gmsh.model.getEntities(d)),
+                default=0,
+            )
+            if int(settings.dimension) != available_dimension:
+                raise ValueError(
+                    f"Requested {int(settings.dimension)}D mesh but geometry is "
+                    f"{available_dimension}D. Use a matching geometry primitive."
+                )
 
             gmsh.option.setNumber(
                 "Mesh.MeshSizeMin",
@@ -87,6 +94,31 @@ class GmshMeshingAdapter:
                     option,
                     settings.algorithm,
                 )
+
+            gmsh.option.setNumber("Mesh.RecombineAll", 0)
+            gmsh.option.setNumber("Mesh.ElementOrder", 1)
+            if settings.element_family == MeshElementFamily.QUADRILATERAL:
+                surfaces = gmsh.model.getEntities(2)
+                if len(surfaces) == 1 and len(gmsh.model.getBoundary(surfaces)) == 4:
+                    for curve_dim, curve_tag in gmsh.model.getBoundary(surfaces):
+                        gmsh.model.mesh.setTransfiniteCurve(
+                            curve_tag,
+                            max(
+                                2,
+                                round(
+                                    max(
+                                        settings.min_size,
+                                        gmsh.model.occ.getMass(1, curve_tag),
+                                    )
+                                    / settings.max_size
+                                )
+                                + 1,
+                            ),
+                        )
+                    gmsh.model.mesh.setTransfiniteSurface(surfaces[0][1])
+                for _, surface_tag in surfaces:
+                    gmsh.model.mesh.setRecombine(2, surface_tag)
+                gmsh.option.setNumber("Mesh.RecombinationAlgorithm", 1)
 
             gmsh.model.mesh.generate(int(settings.dimension))
 

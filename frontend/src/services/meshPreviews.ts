@@ -9,6 +9,9 @@ export interface MeshSurfacePreview extends GeometryPreview {
   mesh_job_id: string;
   mesh_artifact_id: string;
   volume_element_count: number;
+  dimension?: number;
+  line_count?: number;
+  quad_count?: number;
   source_node_count: number;
 }
 
@@ -23,7 +26,7 @@ export async function getLatestMeshPreview(
   const response = await fetch(url, { signal });
   if (!response.ok) {
     if (response.status === 404) {
-      throw new Error("No completed tetrahedral mesh found for this geometry.");
+      throw new Error("No completed mesh found for this geometry.");
     }
     throw new Error(`Mesh preview failed: HTTP ${response.status}`);
   }

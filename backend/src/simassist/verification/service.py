@@ -87,8 +87,13 @@ class VerificationService:
         except (ValueError, KeyError, TypeError) as exc:
             raise VerificationError("Invalid geometry result") from exc
 
-        if geometry.metadata.volume_count < 1:
+        dimension = geometry.metadata.dimension
+        if dimension == 3 and geometry.metadata.volume_count < 1:
             raise VerificationError("Geometry contains no solid volumes")
+        if dimension == 2 and geometry.metadata.surface_count < 1:
+            raise VerificationError("Geometry contains no surfaces")
+        if dimension == 1 and geometry.metadata.curve_count < 1:
+            raise VerificationError("Geometry contains no curves")
 
         self._check_artifact(
             artifact_id=geometry.artifact_id,
@@ -110,18 +115,39 @@ class VerificationService:
 
             points = preview["points"]
             triangles = preview["triangles"]
+            lines = preview.get("lines", [])
 
             if not isinstance(points, list) or not points:
                 raise VerificationError("Geometry preview contains no points")
 
-            if not isinstance(triangles, list) or not triangles:
+            if not isinstance(triangles, list) or not isinstance(lines, list):
+                raise VerificationError("Invalid geometry preview cells")
+            if dimension == 1 and not lines:
+                raise VerificationError("Geometry preview contains no lines")
+            if dimension >= 2 and not triangles:
                 raise VerificationError("Geometry preview contains no triangles")
+            if preview.get("line_count", len(lines)) != len(lines):
+                raise VerificationError("Preview line count mismatch")
 
             if preview["point_count"] != len(points):
                 raise VerificationError("Preview point count mismatch")
 
             if preview["triangle_count"] != len(triangles):
                 raise VerificationError("Preview triangle count mismatch")
+
+            if any(
+                not isinstance(line, list)
+                or len(line) != 2
+                or any(
+                    not isinstance(index, int)
+                    or isinstance(index, bool)
+                    or index < 0
+                    or index >= len(points)
+                    for index in line
+                )
+                for line in lines
+            ):
+                raise VerificationError("Preview contains invalid line indices")
 
             if any(
                 not isinstance(triangle, list)
@@ -159,18 +185,32 @@ class VerificationService:
             if actual_total != metadata.element_count:
                 raise VerificationError("Mesh element count mismatch")
 
-        if request.settings.dimension == MeshDimension.TWO_D:
-            # Element family currently applies only to 3D volumes.
-            # For 2D, verify that surface triangles exist.
-            triangle_count = sum(
-                count
+        if request.settings.dimension in (MeshDimension.ONE_D, MeshDimension.TWO_D):
+            prefix = {
+                MeshElementFamily.LINE: "line",
+                MeshElementFamily.TRIANGULAR: "triangle",
+                MeshElementFamily.QUADRILATERAL: "quad",
+            }[request.settings.element_family]
+            other_prefixes = ("line", "triangle", "quad")
+            relevant = [
+                (name.lower(), count)
                 for name, count in metadata.element_types.items()
-                if name.lower().startswith("triangle")
-            )
-
-            if triangle_count <= 0:
-                raise VerificationError("2D mesh contains no triangle elements")
-
+                if count > 0
+                and name.lower().startswith(other_prefixes)
+                and (request.settings.dimension == 2 or name.lower().startswith("line"))
+            ]
+            # 2D includes boundary lines; only inspect 2D cells.
+            if request.settings.dimension == MeshDimension.TWO_D:
+                relevant = [
+                    (name, count)
+                    for name, count in relevant
+                    if name.startswith(("triangle", "quad"))
+                ]
+            if not relevant or any(not name.startswith(prefix) for name, _ in relevant):
+                raise VerificationError(
+                    f"Requested {request.settings.element_family.value} "
+                    f"mesh, but actual elements are {metadata.element_types}"
+                )
             return
 
         # Prefer dimension-classified Gmsh metadata.

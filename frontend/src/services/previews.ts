@@ -5,6 +5,11 @@ const API_URL =
 export interface GeometryPreview {
   points: [number, number, number][];
   triangles: [number, number, number][];
+  lines?: [number, number][];
+  quads?: [number, number, number, number][];
+  dimension?: number;
+  line_count?: number;
+  quad_count?: number;
   point_count: number;
   triangle_count: number;
 }
@@ -51,6 +56,14 @@ export async function getGeometryPreview(
             typeof value !== "number" ||
             !Number.isFinite(value),
         ),
+    ) ||
+    (preview.lines ?? []).some(
+      (line) => !Array.isArray(line) || line.length !== 2 ||
+      line.some((index) => !Number.isInteger(index) || index < 0 || index >= preview.points.length),
+    ) ||
+    (preview.quads ?? []).some(
+      (quad) => !Array.isArray(quad) || quad.length !== 4 ||
+      quad.some((index) => !Number.isInteger(index) || index < 0 || index >= preview.points.length),
     ) ||
     preview.triangles.some(
       (triangle) =>

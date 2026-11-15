@@ -85,6 +85,74 @@ def build_tetra_surface_preview(mesh_path: Path) -> dict:
     }
 
 
+def build_mesh_preview(mesh_path: Path) -> dict:
+    """Read the actual 1D, 2D or 3D mesh and emit VTK-friendly cells.
+
+    Preserve quadrilateral faces (no artificial diagonal in the viewer).
+    Extract only external tetra faces for 3D.
+    """
+    mesh = meshio.read(mesh_path)
+    points = mesh.points
+    if len(points) == 0:
+        raise ValueError("Mesh has no nodes")
+    dim = 0
+    for block in mesh.cells:
+        kind = block.type.lower()
+        if kind.startswith("tetra"):
+            dim = max(dim, 3)
+        elif kind.startswith(("triangle", "quad")):
+            dim = max(dim, 2)
+        elif kind.startswith("line"):
+            dim = max(dim, 1)
+    if dim == 0:
+        raise ValueError("No supported 1D, 2D or 3D mesh cells")
+    if dim == 3:
+        result = build_tetra_surface_preview(mesh_path)
+        return {
+            **result,
+            "dimension": 3,
+            "lines": [],
+            "quads": [],
+            "line_count": 0,
+            "quad_count": 0,
+            "triangle_count": result["triangle_count"],
+        }
+
+    lines: list[list[int]] = []
+    triangles: list[list[int]] = []
+    quads: list[list[int]] = []
+    for block in mesh.cells:
+        kind = block.type.lower()
+        if dim == 1 and kind.startswith("line"):
+            lines.extend([[int(v) for v in cell[:2]] for cell in block.data])
+        elif dim == 2 and kind.startswith("triangle"):
+            triangles.extend([[int(v) for v in cell[:3]] for cell in block.data])
+        elif dim == 2 and kind.startswith("quad"):
+            quads.extend([[int(v) for v in cell[:4]] for cell in block.data])
+    if dim == 1 and not lines:
+        raise ValueError("No line elements in 1D mesh")
+    if dim == 2 and not (triangles or quads):
+        raise ValueError("No surface elements in 2D mesh")
+    count = len(lines) + len(triangles) + len(quads)
+    if count > MAX_SURFACE_TRIANGLES:
+        raise OverflowError("Mesh preview too large; reduce mesh density")
+    used = sorted({v for cell in (*lines, *triangles, *quads) for v in cell})
+    compact = {old: new for new, old in enumerate(used)}
+    return {
+        "dimension": dim,
+        "points": [[float(v) for v in points[index][:3]] for index in used],
+        "lines": [[compact[v] for v in line] for line in lines],
+        "triangles": [[compact[v] for v in tri] for tri in triangles],
+        "quads": [[compact[v] for v in quad] for quad in quads],
+        "point_count": len(used),
+        "line_count": len(lines),
+        "triangle_count": len(triangles),
+        "quad_count": len(quads),
+        "volume_element_count": 0,
+        "source_node_count": len(points),
+    }
+
+
 @router.get("/geometries/{geometry_job_id}/mesh-preview")
 def get_latest_mesh_preview(
     project_id: UUID,
@@ -146,7 +214,7 @@ def get_latest_mesh_preview(
         path = store.resolve_path(artifact_id)
         if path.suffix.lower() != ".msh":
             raise HTTPException(status_code=422, detail="Expected Gmsh .msh artifact")
-        preview = build_tetra_surface_preview(path)
+        preview = build_mesh_preview(path)
     except (KeyError, FileNotFoundError) as exc:
         raise HTTPException(
             status_code=404, detail="Mesh artifact file missing"

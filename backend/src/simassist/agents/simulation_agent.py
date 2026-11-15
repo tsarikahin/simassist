@@ -39,12 +39,21 @@ ACTIVE GEOMETRY
 MESH ELEMENT FAMILY RULES
 
 - Mesh dimension and element family are distinct concepts.
-- Gmsh currently supports tetrahedral 3D volume meshes only.
+- Gmsh supports 1D line, 2D triangular or quadrilateral, and 3D tetrahedral meshes.
+- Use a real 1D line primitive for 1D and a surface primitive (square,
+  rectangle, disk) for 2D. Never use a box for a 2D square.
+- When meshing an existing geometry, infer dimension from stored geometry
+  metadata; do not force 3D. Pass the requested family explicitly.
+- For 1D use line; for 2D default triangular unless quad requested;
+  for 3D default tetrahedral. All-quad must be validated.
+- If requested geometry dimension and mesh dimension disagree, explain
+  the mismatch rather than submitting a job.
 - Hexahedral meshes are not supported. Never silently replace hex with tet.
 - Pass the user's requested element_family explicitly to mesh tools.
 - If hex is requested, explain that it is unsupported, and ask for
   permission before using tetrahedral instead.
 - No mesh job should be submitted for unsupported element families.
+- Do not describe 2D triangles or quads as tetrahedra.
 - For 3D meshing without an explicit family, use tetrahedral.
 - Never claim an element family was generated without a verified result.
 

@@ -56,8 +56,24 @@ function createPolyData(preview: GeometryPreview) {
     cells[offset + 3] = triangle[2];
   });
 
-  polyData.getPolys().setData(cells);
+  const quadCells = new Uint32Array((preview.quads?.length ?? 0) * 5);
+  (preview.quads ?? []).forEach((quad, index) => {
+    const offset = index * 5;
+    quadCells[offset] = 4;
+    quadCells.set(quad, offset + 1);
+  });
+  const polygons = new Uint32Array(cells.length + quadCells.length);
+  polygons.set(cells);
+  polygons.set(quadCells, cells.length);
+  polyData.getPolys().setData(polygons);
 
+  const lineCells = new Uint32Array((preview.lines?.length ?? 0) * 3);
+  (preview.lines ?? []).forEach((line, index) => {
+    const offset = index * 3;
+    lineCells[offset] = 2;
+    lineCells.set(line, offset + 1);
+  });
+  polyData.getLines().setData(lineCells);
   return polyData;
 }
 
@@ -81,6 +97,9 @@ export function SimulationViewer({
     artifactId: string;
     pointCount: number;
     triangleCount: number;
+    quadCount: number;
+    lineCount: number;
+    dimension: number;
   } | null>(null);
 
   // Discover all completed meshes for the selected geometry.
@@ -211,7 +230,7 @@ export function SimulationViewer({
         if (viewMode === "mesh") {
           property.setEdgeVisibility(true);
           property.setEdgeColor(0.05, 0.13, 0.22);
-          property.setLineWidth(1.2);
+          property.setLineWidth(3);
         }
 
         renderer.addActor(actor);
@@ -249,6 +268,9 @@ export function SimulationViewer({
           artifactId: viewMode === "mesh" ? geometryJobId! : previewArtifactId!,
           pointCount: preview.point_count,
           triangleCount: preview.triangle_count,
+          quadCount: preview.quads?.length ?? 0,
+          lineCount: preview.lines?.length ?? 0,
+          dimension: preview.dimension ?? 3,
         });
       } catch (err) {
         if (disposed) return;
@@ -297,7 +319,7 @@ export function SimulationViewer({
     <div className="simulation-viewer">
       <div className="viewer-toolbar">
           <div style={{ display: "flex", alignItems: "center", gap: 12 }}>
-            <span>3D Viewport</span>
+            <span>Simulation Viewport</span>
             <div role="group" aria-label="Viewer mode" style={{ display: "flex", gap: 4 }}>
               <button type="button" aria-pressed={viewMode === "geometry"}
                 onClick={() => setViewMode("geometry")}
@@ -393,7 +415,11 @@ export function SimulationViewer({
               <span><strong>Version:</strong> {selectedMesh.job_id.slice(0, 8)}</span>
               <span><strong>Total nodes:</strong> {selectedMesh.metadata.node_count?.toLocaleString() ?? "—"}</span>
               <span><strong>All elements:</strong> {selectedMesh.metadata.element_count?.toLocaleString() ?? "—"}</span>
-              <span><strong>Tetrahedra:</strong> {(tetraCount || fallbackTetraCount).toLocaleString()}</span>
+              <span><strong>Element family:</strong> {selectedMesh.settings.element_family ?? "tetrahedral"}</span>
+              <span><strong>Dimension:</strong> {selectedMesh.settings.dimension ?? 3}D</span>
+              {(selectedMesh.settings.dimension ?? 3) === 3 && <span><strong>Tetrahedra:</strong> {(tetraCount || fallbackTetraCount).toLocaleString()}</span>}
+              {(selectedMesh.settings.dimension ?? 3) === 2 && <span><strong>Surface cells:</strong> {Object.entries(selectedMesh.metadata.element_types ?? {}).filter(([name]) => /triangle|quadrangle/i.test(name)).reduce((n, [,v]) => n+v,0).toLocaleString()}</span>}
+              {(selectedMesh.settings.dimension ?? 3) === 1 && <span><strong>Line cells:</strong> {Object.entries(selectedMesh.metadata.element_types ?? {}).filter(([name]) => /line/i.test(name)).reduce((n, [,v]) => n+v,0).toLocaleString()}</span> }
               <span><strong>Size:</strong> {selectedMesh.settings.min_size ?? "?"}–{selectedMesh.settings.max_size ?? "?"}</span>
               <span><strong>Versions:</strong> {meshVersions.length}</span>
             </>
@@ -408,7 +434,7 @@ export function SimulationViewer({
         </span>
         <span>
           {currentGeometry
-            ? `${viewMode === "mesh" ? "Surface mesh triangles" : "Triangles"}: ${currentGeometry.triangleCount}`
+            ? `${currentGeometry.dimension}D · ${currentGeometry.lineCount} lines · ${currentGeometry.triangleCount} triangles · ${currentGeometry.quadCount} quads`
             : "Units: Not specified"}
         </span>
       </div>

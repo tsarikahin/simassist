@@ -7,11 +7,15 @@ from pydantic import BaseModel, Field, model_validator
 
 
 class MeshDimension(IntEnum):
+    ONE_D = 1
     TWO_D = 2
     THREE_D = 3
 
 
 class MeshElementFamily(StrEnum):
+    LINE = "line"
+    TRIANGULAR = "triangular"
+    QUADRILATERAL = "quadrilateral"
     TETRAHEDRAL = "tetrahedral"
     HEXAHEDRAL = "hexahedral"
 
@@ -19,7 +23,7 @@ class MeshElementFamily(StrEnum):
 class MeshSettings(BaseModel):
     dimension: MeshDimension = MeshDimension.THREE_D
 
-    element_family: MeshElementFamily = MeshElementFamily.TETRAHEDRAL
+    element_family: MeshElementFamily | None = None
 
     min_size: float = Field(default=1.0, gt=0)
     max_size: float = Field(default=5.0, gt=0)
@@ -30,12 +34,28 @@ class MeshSettings(BaseModel):
         if self.min_size > self.max_size:
             raise ValueError("min_size must be less than or equal to max_size")
 
-        if (
-            self.dimension == MeshDimension.TWO_D
-            and self.element_family == MeshElementFamily.HEXAHEDRAL
-        ):
-            raise ValueError("Hexahedral elements require a 3D mesh")
-
+        defaults = {
+            MeshDimension.ONE_D: MeshElementFamily.LINE,
+            MeshDimension.TWO_D: MeshElementFamily.TRIANGULAR,
+            MeshDimension.THREE_D: MeshElementFamily.TETRAHEDRAL,
+        }
+        supported = {
+            MeshDimension.ONE_D: {MeshElementFamily.LINE},
+            MeshDimension.TWO_D: {
+                MeshElementFamily.TRIANGULAR,
+                MeshElementFamily.QUADRILATERAL,
+            },
+            MeshDimension.THREE_D: {
+                MeshElementFamily.TETRAHEDRAL,
+                MeshElementFamily.HEXAHEDRAL,
+            },
+        }
+        if self.element_family is None:
+            self.element_family = defaults[self.dimension]
+        if self.element_family not in supported[self.dimension]:
+            raise ValueError(
+                f"{self.element_family} is not a valid {int(self.dimension)}D element family"
+            )
         return self
 
 

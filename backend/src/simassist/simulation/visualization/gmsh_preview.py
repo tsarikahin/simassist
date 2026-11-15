@@ -15,9 +15,12 @@ from simassist.storage.base import ArtifactStore
 
 class GeometryPreview(BaseModel):
     points: list[tuple[float, float, float]]
+    lines: list[tuple[int, int]] = Field(default_factory=list)
     triangles: list[tuple[int, int, int]]
     point_count: int = Field(ge=0)
     triangle_count: int = Field(ge=0)
+    line_count: int = Field(default=0, ge=0)
+    dimension: int = Field(default=3, ge=1, le=3)
 
 
 class GmshPreviewService:
@@ -56,36 +59,33 @@ class GmshPreviewService:
             gmsh.model.occ.synchronize()
 
             volumes = gmsh.model.getEntities(3)
-
-            if not volumes:
-                raise ValueError("No solid volumes found")
-
-            bounds = [gmsh.model.getBoundingBox(dim, tag) for dim, tag in volumes]
-
-            xmin = min(b[0] for b in bounds)
-            ymin = min(b[1] for b in bounds)
-            zmin = min(b[2] for b in bounds)
-            xmax = max(b[3] for b in bounds)
-            ymax = max(b[4] for b in bounds)
-            zmax = max(b[5] for b in bounds)
-
+            surfaces = gmsh.model.getEntities(2)
+            curves = gmsh.model.getEntities(1)
+            dimension = 3 if volumes else 2 if surfaces else 1 if curves else 0
+            if dimension == 0:
+                raise ValueError("Geometry has no meshing entities")
+            entities = gmsh.model.getEntities(dimension)
+            bounds = [gmsh.model.getBoundingBox(d, tag) for d, tag in entities]
             diagonal = math.dist(
-                (xmin, ymin, zmin),
-                (xmax, ymax, zmax),
+                (
+                    min(b[0] for b in bounds),
+                    min(b[1] for b in bounds),
+                    min(b[2] for b in bounds),
+                ),
+                (
+                    max(b[3] for b in bounds),
+                    max(b[4] for b in bounds),
+                    max(b[5] for b in bounds),
+                ),
             )
-
             if diagonal <= 0:
                 raise ValueError("Invalid geometry dimensions")
-
             gmsh.option.setNumber("Mesh.ElementOrder", 1)
             gmsh.option.setNumber("Mesh.MeshSizeMin", diagonal / 200)
             gmsh.option.setNumber("Mesh.MeshSizeMax", diagonal / 20)
-
-            # Only triangulate the boundary surfaces.
-            gmsh.model.mesh.generate(2)
+            gmsh.model.mesh.generate(min(dimension, 2))
 
             node_tags, coordinates, _ = gmsh.model.mesh.getNodes()
-
             points = [
                 (
                     float(coordinates[i]),
@@ -94,36 +94,43 @@ class GmshPreviewService:
                 )
                 for i in range(0, len(coordinates), 3)
             ]
-
-            tag_to_index = {int(tag): index for index, tag in enumerate(node_tags)}
-
-            element_types, _, element_nodes = gmsh.model.mesh.getElements(dim=2)
-
+            tag_to_index = {int(tag): i for i, tag in enumerate(node_tags)}
+            lines: list[tuple[int, int]] = []
             triangles: list[tuple[int, int, int]] = []
-
+            element_types, _, element_nodes = gmsh.model.mesh.getElements(
+                dim=min(dimension, 2)
+            )
             for element_type, nodes in zip(element_types, element_nodes, strict=True):
                 properties = gmsh.model.mesh.getElementProperties(int(element_type))
-                dimension = int(properties[1])
                 nodes_per_element = int(properties[3])
-
-                if dimension != 2 or nodes_per_element != 3:
-                    raise ValueError("Preview requires first-order triangles")
-
-                for i in range(0, len(nodes), 3):
-                    triangles.append(
-                        (
-                            tag_to_index[int(nodes[i])],
-                            tag_to_index[int(nodes[i + 1])],
-                            tag_to_index[int(nodes[i + 2])],
+                if dimension == 1 and nodes_per_element == 2:
+                    for i in range(0, len(nodes), 2):
+                        lines.append(
+                            (
+                                tag_to_index[int(nodes[i])],
+                                tag_to_index[int(nodes[i + 1])],
+                            )
                         )
-                    )
-
-            if not triangles:
-                raise ValueError("No surface triangles generated")
+                elif dimension >= 2 and nodes_per_element == 3:
+                    for i in range(0, len(nodes), 3):
+                        triangles.append(
+                            tuple(tag_to_index[int(v)] for v in nodes[i : i + 3])
+                        )
+                elif dimension >= 2 and nodes_per_element == 4:
+                    for i in range(0, len(nodes), 4):
+                        a, b, c, d = (tag_to_index[int(v)] for v in nodes[i : i + 4])
+                        triangles.extend([(a, b, c), (a, c, d)])
+                else:
+                    raise ValueError("Unsupported geometry preview cell type")
+            if not (lines if dimension == 1 else triangles):
+                raise ValueError("No preview elements generated")
 
             preview = GeometryPreview(
                 points=points,
                 triangles=triangles,
+                lines=lines,
+                line_count=len(lines),
+                dimension=dimension,
                 point_count=len(points),
                 triangle_count=len(triangles),
             )

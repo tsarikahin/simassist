@@ -13,14 +13,22 @@ from simassist.core.models.mesh import MeshRequest, MeshSettings
 from simassist.jobs.models import JobType
 from simassist.projects.context import ProjectContextRepository
 
-PrimitiveName = Literal["box", "cylinder", "sphere"]
+PrimitiveName = Literal[
+    "line", "square", "rectangle", "disk", "box", "cylinder", "sphere"
+]
 LengthUnitName = Literal["mm", "cm", "m", "in"]
-ElementFamilyName = Literal["tetrahedral", "hexahedral"]
+ElementFamilyName = Literal[
+    "line", "triangular", "quadrilateral", "tetrahedral", "hexahedral"
+]
 
 GEOMETRY_PARAMETERS: dict[str, set[str]] = {
     "box": {"length", "width", "height"},
     "cylinder": {"radius", "height"},
     "sphere": {"radius"},
+    "line": {"length"},
+    "square": {"size"},
+    "rectangle": {"width", "height"},
+    "disk": {"radius"},
 }
 BOX_ALIASES = {"dx": "length", "dy": "width", "dz": "height"}
 
@@ -48,10 +56,15 @@ class SimulationTools:
                 "Hexahedral meshing is not supported by the current Gmsh engine. "
                 "No job was submitted. Ask before switching to tetrahedral."
             )
-        if element_family != "tetrahedral":
-            return f"Unsupported element family: {element_family}"
-        if dimension not in (2, 3):
-            return "Mesh dimension must be 2 or 3"
+        expected = {
+            1: {"line"},
+            2: {"triangular", "quadrilateral"},
+            3: {"tetrahedral"},
+        }
+        if dimension not in expected:
+            return "Mesh dimension must be 1, 2 or 3"
+        if element_family not in expected[dimension]:
+            return f"Unsupported {dimension}D element family: {element_family}"
         return None
 
     @staticmethod
@@ -87,8 +100,12 @@ class SimulationTools:
         dimension: int,
         min_size: float,
         max_size: float,
-        element_family: str,
+        element_family: str | None,
     ) -> tuple[MeshSettings | None, str | None]:
+        if element_family is None:
+            element_family = {1: "line", 2: "triangular", 3: "tetrahedral"}.get(
+                dimension
+            )
         family_error = SimulationTools._validate_element_family(
             element_family, dimension
         )
@@ -113,6 +130,10 @@ class SimulationTools:
                     "box": ["length", "width", "height"],
                     "cylinder": ["radius", "height"],
                     "sphere": ["radius"],
+                    "line": ["length"],
+                    "square": ["size"],
+                    "rectangle": ["width", "height"],
+                    "disk": ["radius"],
                 },
                 "aliases": {"box": BOX_ALIASES},
                 "units": ["mm", "cm", "m", "in"],
@@ -124,7 +145,8 @@ class SimulationTools:
                     "engine": "gmsh",
                     "supported_3d_element_families": ["tetrahedral"],
                     "unsupported_3d_element_families": ["hexahedral"],
-                    "supported_2d_elements": ["triangle"],
+                    "supported_1d_elements": ["line"],
+                    "supported_2d_elements": ["triangular", "quadrilateral"],
                 },
             }
         )
@@ -194,10 +216,10 @@ class SimulationTools:
     def generate_mesh(
         self,
         geometry_job_id: str | None = None,
-        dimension: Literal[2, 3] = 3,
+        dimension: Literal[1, 2, 3] | None = None,
         min_size: float = 1.0,
         max_size: float = 5.0,
-        element_family: ElementFamilyName = "tetrahedral",
+        element_family: ElementFamilyName | None = None,
     ) -> str:
         """Mesh a completed geometry, defaulting to the selected active geometry.
 
@@ -210,15 +232,26 @@ class SimulationTools:
             element_family: Tetrahedral supported; hexahedral unsupported.
                 Never silently substitute tet for hex.
         """
-        settings, error = self._validate_mesh_settings(
-            dimension, min_size, max_size, element_family
-        )
-        if error or settings is None:
+        # Reject unsupported 3D hex before any geometry lookup or job submission.
+        if element_family == "hexahedral":
             return self._error(
-                error or "Invalid mesh settings",
+                "Hexahedral meshing is not supported by the current Gmsh engine. "
+                "No job was submitted. Ask before switching to tetrahedral.",
                 requested_element_family=element_family,
-                supported_element_families=["tetrahedral"],
             )
+
+        if (
+            not isinstance(min_size, (int, float))
+            or not isinstance(max_size, (int, float))
+            or isinstance(min_size, bool)
+            or isinstance(max_size, bool)
+            or not math.isfinite(min_size)
+            or not math.isfinite(max_size)
+            or min_size <= 0
+            or max_size <= 0
+            or min_size > max_size
+        ):
+            return self._error("Invalid mesh element size settings")
 
         if geometry_job_id is None:
             active = json.loads(self.get_active_geometry())
@@ -244,6 +277,28 @@ class SimulationTools:
             )
 
         geometry_result = geometry_status.get("result") or {}
+        geometry_metadata = geometry_result.get("metadata") or {}
+        geometry_dimension = geometry_metadata.get("dimension")
+        if geometry_dimension is None:
+            geometry_dimension = (
+                3
+                if geometry_metadata.get("volume_count", 0)
+                else 2
+                if geometry_metadata.get("surface_count", 0)
+                else 3
+            )
+        if dimension is None:
+            dimension = int(geometry_dimension)
+        if int(dimension) != int(geometry_dimension):
+            return self._error(
+                f"Selected geometry is {geometry_dimension}D, but requested mesh is {dimension}D"
+            )
+        settings, error = self._validate_mesh_settings(
+            dimension, min_size, max_size, element_family
+        )
+        if error or settings is None:
+            return self._error(error or "Invalid mesh settings")
+
         artifact_id = geometry_result.get("artifact_id")
         if not artifact_id:
             return self._error("Geometry job has no artifact ID")
@@ -280,10 +335,10 @@ class SimulationTools:
         primitive: PrimitiveName,
         parameters: dict[str, float],
         units: LengthUnitName = "mm",
-        dimension: Literal[2, 3] = 3,
+        dimension: Literal[1, 2, 3] | None = None,
         min_size: float = 1.0,
         max_size: float = 5.0,
-        element_family: ElementFamilyName = "tetrahedral",
+        element_family: ElementFamilyName | None = None,
     ) -> str:
         """Submit one geometry-to-mesh workflow with dependency management.
 
@@ -297,6 +352,23 @@ class SimulationTools:
             max_size: Maximum mesh size.
             element_family: Tetrahedral supported; hexahedral rejected.
         """
+        primitive_dimension = {
+            "line": 1,
+            "square": 2,
+            "rectangle": 2,
+            "disk": 2,
+            "box": 3,
+            "cylinder": 3,
+            "sphere": 3,
+        }.get(primitive)
+        if primitive_dimension is None:
+            return self._error(f"Unsupported primitive: {primitive}")
+        if dimension is None:
+            dimension = primitive_dimension
+        if dimension != primitive_dimension:
+            return self._error(
+                f"{primitive} is {primitive_dimension}D and cannot be meshed as {dimension}D"
+            )
         settings, settings_error = self._validate_mesh_settings(
             dimension, min_size, max_size, element_family
         )
