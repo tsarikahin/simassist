@@ -2,6 +2,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Maximize2, RotateCcw, RefreshCw } from "lucide-react";
 import { getLatestMeshPreview } from "../../../services/meshPreviews";
+import { listMeshVersions, getMeshVersionPreview, type MeshVersion } from "../../../services/meshVersions";
 
 import "@kitware/vtk.js/Rendering/Profiles/All";
 
@@ -70,6 +71,10 @@ export function SimulationViewer({
 
   const [viewMode, setViewMode] = useState<"geometry" | "mesh">("geometry");
   const [meshRevision, setMeshRevision] = useState(0);
+  const [meshVersions, setMeshVersions] = useState<MeshVersion[]>([]);
+  const [selectedMeshJobId, setSelectedMeshJobId] = useState<string>("");
+  const [versionsLoading, setVersionsLoading] = useState(false);
+  const [versionsError, setVersionsError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [geometry, setGeometry] = useState<{
@@ -77,6 +82,50 @@ export function SimulationViewer({
     pointCount: number;
     triangleCount: number;
   } | null>(null);
+
+  // Discover all completed meshes for the selected geometry.
+  // Keep the current selection on refresh when it still exists.
+  useEffect(() => {
+    const controller = new AbortController();
+    if (!geometryJobId) {
+      setMeshVersions([]);
+      setSelectedMeshJobId("");
+      setVersionsError(null);
+      return () => controller.abort();
+    }
+    setVersionsLoading(true);
+    setVersionsError(null);
+    void listMeshVersions(projectId, geometryJobId, controller.signal)
+      .then((versions) => {
+        if (controller.signal.aborted) return;
+        setMeshVersions(versions);
+        setSelectedMeshJobId((previous) =>
+          versions.some((mesh) => mesh.job_id === previous)
+            ? previous : (versions[0]?.job_id ?? ""),
+        );
+      })
+      .catch((err: unknown) => {
+        if (controller.signal.aborted) return;
+        setVersionsError(err instanceof Error ? err.message : "Unable to list mesh versions");
+        setMeshVersions([]);
+        setSelectedMeshJobId("");
+      })
+      .finally(() => {
+        if (!controller.signal.aborted) setVersionsLoading(false);
+      });
+    return () => controller.abort();
+  }, [projectId, geometryJobId, meshRevision]);
+
+  const selectedMesh = meshVersions.find((mesh) => mesh.job_id === selectedMeshJobId);
+  const volumeCounts = selectedMesh?.metadata.volume_element_types ?? {};
+  const tetraCount = Object.entries(volumeCounts).reduce(
+    (total, [name, count]) => total + (name.toLowerCase().startsWith("tetra") ? count : 0),
+    0,
+  );
+  const fallbackTetraCount = Object.entries(selectedMesh?.metadata.element_types ?? {}).reduce(
+    (total, [name, count]) => total + (name.toLowerCase().startsWith("tetra") ? count : 0),
+    0,
+  );
 
   useEffect(() => {
     const container = containerRef.current;
@@ -138,7 +187,9 @@ export function SimulationViewer({
 
       try {
         const preview = viewMode === "mesh"
-          ? await getLatestMeshPreview(projectId, geometryJobId!, controller.signal)
+          ? selectedMeshJobId
+            ? await getMeshVersionPreview(projectId, geometryJobId!, selectedMeshJobId, controller.signal)
+            : await getLatestMeshPreview(projectId, geometryJobId!, controller.signal)
           : await getGeometryPreview(projectId, previewArtifactId!, controller.signal);
 
         if (disposed) return;
@@ -226,7 +277,7 @@ export function SimulationViewer({
       mapper?.delete();
       polyData?.delete();
     };
-  }, [projectId, previewArtifactId, geometryJobId, viewMode, meshRevision]);
+  }, [projectId, previewArtifactId, geometryJobId, viewMode, meshRevision, selectedMeshJobId]);
 
   function resetCamera() {
     vtkRef.current?.getRenderer().resetCamera();
@@ -259,6 +310,22 @@ export function SimulationViewer({
                 style={{ color: viewMode === "mesh" ? "#60a5fa" : "inherit" }}>
                 Mesh
               </button>
+              {viewMode === "mesh" && (
+                <select
+                  aria-label="Mesh version"
+                  value={selectedMeshJobId}
+                  disabled={versionsLoading || meshVersions.length === 0}
+                  onChange={(event) => setSelectedMeshJobId(event.target.value)}
+                  style={{ maxWidth: 230, background: "#1e293b", color: "#e2e8f0", border: "1px solid #475569", borderRadius: 4, padding: 4 }}
+                >
+                  {meshVersions.length === 0 && <option value="">No mesh versions</option>}
+                  {meshVersions.map((mesh, index) => (
+                    <option key={mesh.job_id} value={mesh.job_id}>
+                      {index === 0 ? "Latest" : `Version ${meshVersions.length - index}`} · {mesh.job_id.slice(0, 8)}
+                    </option>
+                  ))}
+                </select>
+              )}
               {viewMode === "mesh" && (
                 <button type="button" aria-label="Refresh mesh" title="Refresh mesh"
                   onClick={() => setMeshRevision((value) => value + 1)}>
@@ -316,6 +383,23 @@ export function SimulationViewer({
         )}
       </div>
 
+      {viewMode === "mesh" && (
+        <div aria-label="Mesh statistics" style={{ display: "flex", flexWrap: "wrap", gap: 16, padding: "7px 12px", fontSize: 12, color: "#cbd5e1", background: "#111827", borderTop: "1px solid #334155" }}>
+          {versionsLoading && <span>Loading mesh versions...</span>}
+          {versionsError && <span role="alert" style={{ color: "#fb7185" }}>{versionsError}</span>}
+          {!versionsLoading && !versionsError && meshVersions.length === 0 && <span>No completed mesh for this geometry</span>}
+          {selectedMesh && (
+            <>
+              <span><strong>Version:</strong> {selectedMesh.job_id.slice(0, 8)}</span>
+              <span><strong>Total nodes:</strong> {selectedMesh.metadata.node_count?.toLocaleString() ?? "—"}</span>
+              <span><strong>All elements:</strong> {selectedMesh.metadata.element_count?.toLocaleString() ?? "—"}</span>
+              <span><strong>Tetrahedra:</strong> {(tetraCount || fallbackTetraCount).toLocaleString()}</span>
+              <span><strong>Size:</strong> {selectedMesh.settings.min_size ?? "?"}–{selectedMesh.settings.max_size ?? "?"}</span>
+              <span><strong>Versions:</strong> {meshVersions.length}</span>
+            </>
+          )}
+        </div>
+      )}
       <div className="viewer-footer">
         <span>
           {currentGeometry
