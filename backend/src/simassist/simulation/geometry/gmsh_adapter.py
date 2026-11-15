@@ -11,6 +11,7 @@ from simassist.core.models.geometry import (
     GeometryMetadata,
     GeometryResult,
     GeometrySpec,
+    InlineCSGGeometry,
     PrimitiveGeometry,
     PrimitiveType,
     Vector3D,
@@ -52,6 +53,9 @@ class GmshGeometryAdapter:
 
             if isinstance(definition, PrimitiveGeometry):
                 self._create_primitive(definition)
+
+            elif isinstance(definition, InlineCSGGeometry):
+                self._create_csg(definition)
 
             elif isinstance(definition, CADImportGeometry):
                 raise NotImplementedError("CAD import is not implemented yet.")
@@ -104,72 +108,117 @@ class GmshGeometryAdapter:
         finally:
             gmsh.finalize()
 
-    @staticmethod
-    def _create_primitive(definition: PrimitiveGeometry) -> None:
-        """Create a supported geometric primitive."""
+    @classmethod
+    def _create_csg(cls, definition: InlineCSGGeometry) -> None:
+        """Execute OCC boolean operations on primitive shapes in one model."""
+        entities = [cls._add_primitive(item) for item in definition.operands]
+        first, others = entities[0:1], entities[1:]
+        if definition.operation == "cut":
+            result, _ = gmsh.model.occ.cut(
+                first, others, removeObject=True, removeTool=True
+            )
+        elif definition.operation == "fuse":
+            result, _ = gmsh.model.occ.fuse(
+                first, others, removeObject=True, removeTool=True
+            )
+        elif definition.operation == "intersect":
+            result, _ = gmsh.model.occ.intersect(
+                first, others, removeObject=True, removeTool=True
+            )
+        else:
+            raise ValueError(
+                f"Unsupported CAD boolean operation: {definition.operation}"
+            )
 
+        expected_dim = entities[0][0]
+        if not any(dim == expected_dim for dim, _ in result):
+            raise ValueError(
+                f"CAD boolean {definition.operation} produced no {expected_dim}D geometry"
+            )
+
+    @classmethod
+    def _create_primitive(cls, definition: PrimitiveGeometry) -> None:
+        cls._add_primitive(definition)
+
+    @staticmethod
+    def _add_primitive(definition: PrimitiveGeometry) -> tuple[int, int]:
+        """Add an OCC primitive and return its (dimension, entity tag)."""
         parameters = definition.parameters
         origin = definition.origin
-
         if definition.primitive == PrimitiveType.BOX:
-            gmsh.model.occ.addBox(
-                origin.x,
-                origin.y,
-                origin.z,
-                parameters["length"],
-                parameters["width"],
-                parameters["height"],
+            return (
+                3,
+                gmsh.model.occ.addBox(
+                    origin.x,
+                    origin.y,
+                    origin.z,
+                    parameters["length"],
+                    parameters["width"],
+                    parameters["height"],
+                ),
             )
-
-        elif definition.primitive == PrimitiveType.LINE:
-            length = parameters["length"]
+        if definition.primitive == PrimitiveType.LINE:
             p0 = gmsh.model.occ.addPoint(origin.x, origin.y, origin.z)
-            p1 = gmsh.model.occ.addPoint(origin.x + length, origin.y, origin.z)
-            gmsh.model.occ.addLine(p0, p1)
-
-        elif definition.primitive in (PrimitiveType.SQUARE, PrimitiveType.RECTANGLE):
-            gmsh.model.occ.addRectangle(
-                origin.x,
-                origin.y,
-                origin.z,
+            p1 = gmsh.model.occ.addPoint(
+                origin.x + parameters["length"], origin.y, origin.z
+            )
+            return (1, gmsh.model.occ.addLine(p0, p1))
+        if definition.primitive in (PrimitiveType.SQUARE, PrimitiveType.RECTANGLE):
+            width = (
                 parameters["size"]
                 if definition.primitive == PrimitiveType.SQUARE
-                else parameters["width"],
+                else parameters["width"]
+            )
+            height = (
                 parameters["size"]
                 if definition.primitive == PrimitiveType.SQUARE
-                else parameters["height"],
+                else parameters["height"]
             )
-
-        elif definition.primitive == PrimitiveType.DISK:
-            gmsh.model.occ.addDisk(
-                origin.x,
-                origin.y,
-                origin.z,
-                parameters["radius"],
-                parameters["radius"],
+            return (
+                2,
+                gmsh.model.occ.addRectangle(
+                    origin.x,
+                    origin.y,
+                    origin.z,
+                    width,
+                    height,
+                ),
             )
-
-        elif definition.primitive == PrimitiveType.CYLINDER:
-            gmsh.model.occ.addCylinder(
-                origin.x,
-                origin.y,
-                origin.z,
-                0.0,
-                0.0,
-                parameters["height"],
-                parameters["radius"],
+        if definition.primitive == PrimitiveType.DISK:
+            return (
+                2,
+                gmsh.model.occ.addDisk(
+                    origin.x,
+                    origin.y,
+                    origin.z,
+                    parameters["radius"],
+                    parameters["radius"],
+                ),
             )
-
-        elif definition.primitive == PrimitiveType.SPHERE:
-            gmsh.model.occ.addSphere(
-                origin.x,
-                origin.y,
-                origin.z,
-                parameters["radius"],
+        if definition.primitive == PrimitiveType.CYLINDER:
+            return (
+                3,
+                gmsh.model.occ.addCylinder(
+                    origin.x,
+                    origin.y,
+                    origin.z,
+                    0.0,
+                    0.0,
+                    parameters["height"],
+                    parameters["radius"],
+                ),
             )
-
-        else:
-            raise ValueError(f"Unsupported primitive: {definition.primitive}")
+        if definition.primitive == PrimitiveType.SPHERE:
+            return (
+                3,
+                gmsh.model.occ.addSphere(
+                    origin.x,
+                    origin.y,
+                    origin.z,
+                    parameters["radius"],
+                ),
+            )
+        raise ValueError(f"Unsupported primitive: {definition.primitive}")
 
     @staticmethod
     def _get_metadata() -> GeometryMetadata:

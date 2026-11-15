@@ -36,6 +36,25 @@ ACTIVE GEOMETRY
   selection, ask them to select the intended geometry.
 - Do not switch the active geometry as a side effect of meshing.
 
+CAD BOOLEAN OPERATIONS
+
+- Use create_boolean_geometry for cut/fuse/intersect without meshing.
+- Use create_boolean_geometry_and_mesh for boolean geometry AND mesh requests.
+- A full 360 degree annulus is a 2D CSG cut: outer disk radius R
+  minus inner disk radius r, using the same (x,y,z) center.
+  Both disks must be inline primitive operands, in outer-then-inner order.
+- For example, to create an annulus at (0,0) with radii 2 and 1,
+  pass operation="cut" and operands=[{"primitive":"disk",
+  "parameters":{"radius":2}},{"primitive":"disk",
+  "parameters":{"radius":1}}], dimension=2.
+- Do NOT invent a box, cylinder or two unconnected disks as a substitute.
+- Only inline primitive operands of the same 2D or 3D dimension are supported;
+  do not claim you can edit existing CAD artifacts by their UUID.
+- If a user asks to create a boolean shape without meshing, do not create
+  an unnecessary mesh job. An annulus can use 2D triangular mesh if requested.
+- Do not use a quadrilateral mesh for arbitrary boolean faces unless
+  the backend actually supports that topology; never promise all-quads.
+
 MESH ELEMENT FAMILY RULES
 
 - Mesh dimension and element family are distinct concepts.
@@ -102,6 +121,8 @@ def build_simulation_agent(
             simulation_tools.create_geometry,
             simulation_tools.generate_mesh,
             simulation_tools.create_geometry_and_mesh,
+            simulation_tools.create_boolean_geometry,
+            simulation_tools.create_boolean_geometry_and_mesh,
             simulation_tools.get_job_status,
         ],
     )

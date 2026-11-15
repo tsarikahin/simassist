@@ -1,3 +1,4 @@
+import { MeshQualityPanel } from "./MeshQualityPanel";
 
 import { useEffect, useRef, useState } from "react";
 import { Maximize2, RotateCcw, RefreshCw } from "lucide-react";
@@ -425,6 +426,10 @@ export function SimulationViewer({
             </>
           )}
         </div>
+      )}
+      {viewMode === "mesh" && geometryJobId && selectedMeshJobId && (
+        <MeshQualityPanel projectId={projectId} geometryJobId={geometryJobId}
+          meshJobId={selectedMeshJobId} revision={meshRevision} />
       )}
       <div className="viewer-footer">
         <span>

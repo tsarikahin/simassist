@@ -10,6 +10,7 @@ from simassist.api.routes.jobs_events import (
     router as jobs_events_router,
 )
 from simassist.api.routes.mesh_previews import router as mesh_previews_router
+from simassist.api.routes.mesh_quality import router as mesh_quality_router
 from simassist.api.routes.mesh_versions import router as mesh_versions_router
 from simassist.api.routes.projects import router as projects_router
 
@@ -35,6 +36,7 @@ app.include_router(artifacts_router)
 app.include_router(jobs_router)
 app.include_router(mesh_previews_router)
 app.include_router(mesh_versions_router)
+app.include_router(mesh_quality_router)
 app.include_router(chat_router)
 app.include_router(jobs_events_router)
 app.include_router(projects_router)

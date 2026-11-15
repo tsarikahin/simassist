@@ -4,7 +4,7 @@ from enum import StrEnum
 from typing import Annotated, Literal
 from uuid import UUID, uuid4
 
-from pydantic import BaseModel, Field
+from pydantic import BaseModel, Field, model_validator
 
 
 class LengthUnit(StrEnum):
@@ -24,6 +24,7 @@ class GeometrySource(StrEnum):
     PRIMITIVE = "primitive"
     CAD_IMPORT = "cad_import"
     OPERATIONS = "operations"
+    CSG = "csg"
 
 
 class PrimitiveType(StrEnum):
@@ -60,8 +61,44 @@ class BooleanGeometry(BaseModel):
     operands: list[UUID] = Field(min_length=2)
 
 
+class InlineCSGOperation(StrEnum):
+    CUT = "cut"
+    FUSE = "fuse"
+    INTERSECT = "intersect"
+
+
+class InlineCSGGeometry(BaseModel):
+    """Build a boolean CAD shape from inline primitive definitions.
+
+    Cut subtracts all subsequent operands from the first primitive.
+    This model does not mutate existing STEP artifacts.
+    """
+
+    source: Literal["csg"] = "csg"
+    operation: InlineCSGOperation
+    operands: list[PrimitiveGeometry] = Field(min_length=2)
+
+    @model_validator(mode="after")
+    def validate_operand_dimensions(self):
+        dims = {
+            PrimitiveType.LINE: 1,
+            PrimitiveType.SQUARE: 2,
+            PrimitiveType.RECTANGLE: 2,
+            PrimitiveType.DISK: 2,
+            PrimitiveType.BOX: 3,
+            PrimitiveType.CYLINDER: 3,
+            PrimitiveType.SPHERE: 3,
+        }
+        dimensions = {dims[operand.primitive] for operand in self.operands}
+        if len(dimensions) != 1 or dimensions == {1}:
+            raise ValueError(
+                "Boolean CSG requires operands of the same dimension (2D or 3D)"
+            )
+        return self
+
+
 GeometryDefinition = Annotated[
-    PrimitiveGeometry | CADImportGeometry | BooleanGeometry,
+    PrimitiveGeometry | CADImportGeometry | BooleanGeometry | InlineCSGGeometry,
     Field(discriminator="source"),
 ]
 

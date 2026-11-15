@@ -2,13 +2,13 @@ from __future__ import annotations
 
 import json
 import math
-from typing import Literal
+from typing import Any, Literal
 from uuid import UUID
 
 from pydantic import ValidationError
 
 from simassist.agents.tools.geometry import GeometryTools
-from simassist.core.models.geometry import GeometrySpec
+from simassist.core.models.geometry import GeometrySpec, PrimitiveGeometry
 from simassist.core.models.mesh import MeshRequest, MeshSettings
 from simassist.jobs.models import JobType
 from simassist.projects.context import ProjectContextRepository
@@ -139,8 +139,14 @@ class SimulationTools:
                 "units": ["mm", "cm", "m", "in"],
                 "constraints": (
                     "All dimensions must be positive. "
-                    "Only primitive creation is implemented."
+                    "Primitive and inline boolean CSG creation are implemented. "
+                    "Boolean operations on existing STEP artifacts are not yet supported."
                 ),
+                "boolean_csg": {
+                    "operations": ["cut", "fuse", "intersect"],
+                    "operands": "At least two inline 2D or 3D primitive geometries",
+                    "example": "outer disk minus concentric inner disk for annulus",
+                },
                 "meshing": {
                     "engine": "gmsh",
                     "supported_3d_element_families": ["tetrahedral"],
@@ -412,6 +418,188 @@ class SimulationTools:
                 "mesh_job_id": str(mesh_job.id),
                 "status": "queued",
                 "element_family": settings.element_family.value,
+                "workflow": [
+                    {"job_id": str(geometry_job.id), "type": geometry_job.type.value},
+                    {
+                        "job_id": str(mesh_job.id),
+                        "type": mesh_job.type.value,
+                        "depends_on": str(geometry_job.id),
+                    },
+                ],
+            }
+        )
+
+    @classmethod
+    def _build_csg_spec(
+        cls,
+        name: str,
+        operation: str,
+        operands: list[dict[str, Any]],
+        units: str,
+    ) -> tuple[GeometrySpec | None, int | None, str | None]:
+        if operation not in {"cut", "fuse", "intersect"}:
+            return None, None, f"Unsupported boolean operation: {operation}"
+        if not isinstance(operands, list) or len(operands) < 2:
+            return None, None, "At least two operands are required"
+        if len(operands) > 16:
+            return None, None, "At most 16 inline boolean operands are supported"
+
+        primitive_dimensions = {
+            "line": 1,
+            "square": 2,
+            "rectangle": 2,
+            "disk": 2,
+            "box": 3,
+            "cylinder": 3,
+            "sphere": 3,
+        }
+        normalized: list[dict[str, Any]] = []
+        dims: set[int] = set()
+        for index, operand in enumerate(operands):
+            if not isinstance(operand, dict):
+                return None, None, f"Operand {index} must be an object"
+            if set(operand) - {"primitive", "parameters", "origin"}:
+                return None, None, f"Unexpected operand {index} fields"
+            primitive = operand.get("primitive")
+            params = operand.get("parameters")
+            if not isinstance(primitive, str) or not isinstance(params, dict):
+                return None, None, f"Operand {index} needs primitive and parameters"
+            checked, error = cls._normalize_parameters(primitive, params)
+            if error or checked is None:
+                return None, None, f"Operand {index}: {error}"
+            dims.add(primitive_dimensions[primitive])
+            origin = operand.get("origin", {"x": 0, "y": 0, "z": 0})
+            if not isinstance(origin, dict) or set(origin) - {"x", "y", "z"}:
+                return None, None, f"Operand {index}: invalid origin"
+            if any(
+                not isinstance(v, (int, float))
+                or isinstance(v, bool)
+                or not math.isfinite(v)
+                for v in origin.values()
+            ):
+                return None, None, f"Operand {index}: origin must be finite numbers"
+            try:
+                item = PrimitiveGeometry.model_validate(
+                    {
+                        "source": "primitive",
+                        "primitive": primitive,
+                        "parameters": checked,
+                        "origin": origin,
+                    }
+                )
+            except (ValidationError, ValueError) as exc:
+                return None, None, str(exc)
+            normalized.append(item.model_dump(mode="json"))
+
+        if len(dims) != 1 or 1 in dims:
+            return None, None, "Boolean operands must share a 2D or 3D dimension"
+        dimension = next(iter(dims))
+        try:
+            spec = GeometrySpec.model_validate(
+                {
+                    "name": name,
+                    "units": units,
+                    "definition": {
+                        "source": "csg",
+                        "operation": operation,
+                        "operands": normalized,
+                    },
+                }
+            )
+        except (ValidationError, ValueError) as exc:
+            return None, None, str(exc)
+        return spec, dimension, None
+
+    def create_boolean_geometry(
+        self,
+        name: str,
+        operation: Literal["cut", "fuse", "intersect"],
+        operands: list[dict[str, Any]],
+        units: LengthUnitName = "mm",
+    ) -> str:
+        """Create a CAD boolean geometry from inline primitive operands.
+
+        Args:
+            name: Geometry name.
+            operation: Cut (first minus rest), fuse, or intersect.
+            operands: At least two objects with primitive, parameters,
+                and optional origin {x, y, z}. Concentric annulus example:
+                [{"primitive":"disk","parameters":{"radius":2}},
+                 {"primitive":"disk","parameters":{"radius":1}}].
+            units: Length units for every operand.
+        """
+        spec, dimension, error = self._build_csg_spec(
+            name,
+            operation,
+            operands,
+            units,
+        )
+        if error or spec is None:
+            return self._error(error or "Invalid CSG geometry")
+        result = self.geometry.create_geometry(spec.model_dump(mode="json"))
+        if result.get("ok") and result.get("job_id"):
+            self.submitted_job_ids.append(result["job_id"])
+        return json.dumps({**result, "dimension": dimension})
+
+    def create_boolean_geometry_and_mesh(
+        self,
+        name: str,
+        operation: Literal["cut", "fuse", "intersect"],
+        operands: list[dict[str, Any]],
+        units: LengthUnitName = "mm",
+        dimension: Literal[2, 3] | None = None,
+        min_size: float = 1.0,
+        max_size: float = 5.0,
+        element_family: ElementFamilyName | None = None,
+    ) -> str:
+        """Atomically queue CAD boolean geometry and dependent mesh jobs.
+
+        Args:
+            name: Shape name.
+            operation: Cut (first minus rest), fuse, or intersect.
+            operands: Inline primitive definitions, optionally with origins.
+                For an annulus, cut a smaller disk from a larger disk.
+            units: Geometry length units.
+            dimension: Inferred from operands if omitted, 2 or 3.
+            min_size: Minimum mesh element size.
+            max_size: Maximum mesh element size.
+            element_family: 2D triangular/quadrilateral or 3D tetrahedral.
+        """
+        spec, actual_dimension, error = self._build_csg_spec(
+            name,
+            operation,
+            operands,
+            units,
+        )
+        if error or spec is None or actual_dimension is None:
+            return self._error(error or "Invalid CSG geometry")
+        if dimension is not None and dimension != actual_dimension:
+            return self._error(
+                f"Boolean geometry is {actual_dimension}D, not {dimension}D"
+            )
+        settings, error = self._validate_mesh_settings(
+            actual_dimension,
+            min_size,
+            max_size,
+            element_family,
+        )
+        if error or settings is None:
+            return self._error(error or "Invalid mesh settings")
+        geometry_job, mesh_job = self.geometry.job_manager.submit_geometry_mesh(
+            project_id=self.geometry.project_id,
+            geometry_payload=spec.model_dump(mode="json"),
+            mesh_settings=settings.model_dump(mode="json"),
+        )
+        self.submitted_job_ids.extend([str(geometry_job.id), str(mesh_job.id)])
+        return json.dumps(
+            {
+                "ok": True,
+                "message": "CAD boolean geometry and mesh workflow submitted",
+                "status": "queued",
+                "dimension": actual_dimension,
+                "element_family": settings.element_family.value,
+                "geometry_job_id": str(geometry_job.id),
+                "mesh_job_id": str(mesh_job.id),
                 "workflow": [
                     {"job_id": str(geometry_job.id), "type": geometry_job.type.value},
                     {
