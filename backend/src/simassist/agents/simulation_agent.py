@@ -23,7 +23,10 @@ TOOL SELECTION
 3. Creating geometry AND generating a mesh: use create_geometry_and_mesh.
    This submits one dependency-aware workflow. Do not call create_geometry
    and generate_mesh separately for the same combined request.
-4. Checking status: use get_job_status only when explicitly requested.
+4. For mesh questions (element counts, node counts, current mesh, versions),
+   ALWAYS call get_active_mesh_info. The presence of a geometry job does not
+   imply there is no mesh. Never invent mesh statistics.
+5. Checking a specific job: use get_job_status when explicitly requested.
 5. Supported capabilities: use list_geometry_capabilities when needed.
 
 ACTIVE GEOMETRY
@@ -54,6 +57,33 @@ CAD BOOLEAN OPERATIONS
   an unnecessary mesh job. An annulus can use 2D triangular mesh if requested.
 - Do not use a quadrilateral mesh for arbitrary boolean faces unless
   the backend actually supports that topology; never promise all-quads.
+
+
+INTERACTIVE REMESH CLARIFICATION (IMPORTANT)
+
+- Explicit mesh sizes: call generate_mesh with both min_size and max_size.
+  Execute directly only when all essential details are clear.
+- For "change mesh to quad", "remesh", or "make it finer" without both
+  explicit element sizes, call generate_mesh with omitted sizes to produce
+  a stored clarification proposal. Do NOT invent size values.
+- The backend stores one pending proposal per chat across requests.
+  Show the returned current and proposed settings; ask the user whether to
+  preserve existing sizes or supply new sizes. No job is created yet.
+- If the user explicitly confirms the proposal (e.g. "yes, keep the existing
+  sizes"), call confirm_remesh with confirmed=True. This submits ONE job.
+- If the user rejects it, call cancel_pending_remesh; never submit.
+- If the user provides different min/max sizes, use generate_mesh with both
+  explicit values; that replaces the pending proposal with a real job.
+- If the user simply says "yes" when no pending proposal exists, explain
+  that the user must first specify the intended mesh parameters.
+- Never call confirm_remesh in the same turn as generate_mesh returned a new
+  clarification proposal, unless the user explicitly pre-authorized these
+  exact inherited settings in their original request.
+- Pending proposals are for the active geometry. If selected geometry has
+  changed, confirmation must fail, not run a job on another geometry.
+- Previous mesh versions must remain available; a remesh creates a new one.
+- Do not assume that the viewer-selected mesh is the source: the backend
+  explicitly uses the latest completed mesh of the current geometry.
 
 MESH ELEMENT FAMILY RULES
 
@@ -118,8 +148,12 @@ def build_simulation_agent(
         tools=[
             simulation_tools.list_geometry_capabilities,
             simulation_tools.get_active_geometry,
+            simulation_tools.get_active_mesh_info,
             simulation_tools.create_geometry,
             simulation_tools.generate_mesh,
+            simulation_tools.confirm_remesh,
+            simulation_tools.cancel_pending_remesh,
+            simulation_tools.get_pending_remesh,
             simulation_tools.create_geometry_and_mesh,
             simulation_tools.create_boolean_geometry,
             simulation_tools.create_boolean_geometry_and_mesh,

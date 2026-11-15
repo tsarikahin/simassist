@@ -26,6 +26,7 @@ interface SimulationViewerProps {
   previewArtifactId: string | null;
   geometryJobId?: string | null;
   refreshRevision?: number;
+  navigation?: { mode: "geometry" | "mesh"; meshJobId?: string; requestId: number };
 }
 
 function createPolyData(preview: GeometryPreview) {
@@ -84,6 +85,7 @@ export function SimulationViewer({
   previewArtifactId,
   geometryJobId,
   refreshRevision = 0,
+  navigation,
 }: SimulationViewerProps) {
   const containerRef = useRef<HTMLDivElement>(null);
   const vtkRef = useRef<VtkInstance | null>(null);
@@ -104,6 +106,15 @@ export function SimulationViewer({
     lineCount: number;
     dimension: number;
   } | null>(null);
+
+  // Explorer selection is an explicit navigation request, not a default.
+  useEffect(() => {
+    if (!navigation) return;
+    setViewMode(navigation.mode);
+    if (navigation.mode === "mesh" && navigation.meshJobId) {
+      setSelectedMeshJobId(navigation.meshJobId);
+    }
+  }, [navigation?.requestId]);
 
   // Discover all completed meshes for the selected geometry.
   // Keep the current selection on refresh when it still exists.

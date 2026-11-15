@@ -4,6 +4,7 @@ const API_URL =
 
 export interface ChatRequest {
   project_id: string;
+  chat_id?: string;
   message: string;
 }
 

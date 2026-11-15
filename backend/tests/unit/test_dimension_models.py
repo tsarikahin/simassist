@@ -102,7 +102,9 @@ def test_selected_surface_infers_2d_triangle():
         status=JobStatus.QUEUED,
     )
     tool = SimulationTools(geometry)
-    response = json.loads(tool.generate_mesh(geometry_job_id=str(job_id)))
+    response = json.loads(
+        tool.generate_mesh(geometry_job_id=str(job_id), min_size=1, max_size=5)
+    )
     assert response["ok"] is True
     settings = geometry.job_manager.submit.call_args.kwargs["payload"]["settings"]
     assert settings["dimension"] == 2

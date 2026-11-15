@@ -40,9 +40,11 @@ class SimulationTools:
         self,
         geometry: GeometryTools,
         project_context: ProjectContextRepository | None = None,
+        proposal_scope: UUID | None = None,
     ) -> None:
         self.geometry = geometry
         self.project_context = project_context
+        self.proposal_scope = proposal_scope or geometry.project_id
         self.submitted_job_ids: list[str] = []
 
     @staticmethod
@@ -223,8 +225,8 @@ class SimulationTools:
         self,
         geometry_job_id: str | None = None,
         dimension: Literal[1, 2, 3] | None = None,
-        min_size: float = 1.0,
-        max_size: float = 5.0,
+        min_size: float | None = None,
+        max_size: float | None = None,
         element_family: ElementFamilyName | None = None,
     ) -> str:
         """Mesh a completed geometry, defaulting to the selected active geometry.
@@ -245,19 +247,6 @@ class SimulationTools:
                 "No job was submitted. Ask before switching to tetrahedral.",
                 requested_element_family=element_family,
             )
-
-        if (
-            not isinstance(min_size, (int, float))
-            or not isinstance(max_size, (int, float))
-            or isinstance(min_size, bool)
-            or isinstance(max_size, bool)
-            or not math.isfinite(min_size)
-            or not math.isfinite(max_size)
-            or min_size <= 0
-            or max_size <= 0
-            or min_size > max_size
-        ):
-            return self._error("Invalid mesh element size settings")
 
         if geometry_job_id is None:
             active = json.loads(self.get_active_geometry())
@@ -299,6 +288,19 @@ class SimulationTools:
             return self._error(
                 f"Selected geometry is {geometry_dimension}D, but requested mesh is {dimension}D"
             )
+        # Never silently use 1..5 defaults for an existing geometry remesh.
+        if min_size is None or max_size is None:
+            artifact_id = geometry_result.get("artifact_id")
+            if not artifact_id:
+                return self._error("Geometry job has no artifact ID")
+            return self._make_remesh_proposal(
+                geometry_job_id,
+                str(artifact_id),
+                int(dimension),
+                element_family,
+                min_size,
+                max_size,
+            )
         settings, error = self._validate_mesh_settings(
             dimension, min_size, max_size, element_family
         )
@@ -322,6 +324,9 @@ class SimulationTools:
         except (ValueError, TypeError) as exc:
             return self._error(str(exc))
 
+        proposal_store = self._proposal_store()
+        if proposal_store is not None:
+            proposal_store.clear(self.proposal_scope)
         self.submitted_job_ids.append(str(job.id))
         return json.dumps(
             {
@@ -610,6 +615,192 @@ class SimulationTools:
                 ],
             }
         )
+
+    def _proposal_store(self):
+        from simassist.projects.remesh_proposals import RemeshProposalStore
+
+        if self.project_context is None:
+            return None
+        from pathlib import Path
+
+        db_path = getattr(self.project_context, "db_path", None)
+        if not isinstance(db_path, (str, Path)):
+            return None
+        return RemeshProposalStore(Path(db_path))
+
+    def get_pending_remesh(self) -> str:
+        """Read a pending clarification for the current project without submitting a job."""
+        store = self._proposal_store()
+        if store is None:
+            return self._error("Project context is not configured")
+        proposal = store.get(self.proposal_scope)
+        return json.dumps({"ok": bool(proposal), "pending_proposal": proposal})
+
+    def cancel_pending_remesh(self) -> str:
+        """Cancel the pending remesh proposal; do not delete existing mesh versions."""
+        store = self._proposal_store()
+        if store is None:
+            return self._error("Project context is not configured")
+        store.clear(self.proposal_scope)
+        return json.dumps(
+            {
+                "ok": True,
+                "message": "Pending remesh cancelled. Existing meshes unchanged.",
+            }
+        )
+
+    def confirm_remesh(self, confirmed: bool = False) -> str:
+        """Submit stored remesh settings ONLY after the user explicitly confirms them.
+
+        Args:
+            confirmed: True only when the user confirms the proposed sizes/family.
+        """
+        if not confirmed:
+            return self._error("Explicit confirmation required. No job submitted.")
+        store = self._proposal_store()
+        if store is None:
+            return self._error("Project context is not configured")
+        proposal = store.get(self.proposal_scope)
+        if proposal is None:
+            return self._error("No pending remesh proposal. Nothing was submitted.")
+        active = json.loads(self.get_active_geometry())
+        if (
+            not active.get("ok")
+            or active.get("geometry_job_id") != proposal["geometry_job_id"]
+        ):
+            return self._error(
+                "Active geometry changed since proposal. Request remesh again."
+            )
+        result = json.loads(
+            self.generate_mesh(
+                geometry_job_id=proposal["geometry_job_id"],
+                dimension=proposal["dimension"],
+                min_size=proposal["min_size"],
+                max_size=proposal["max_size"],
+                element_family=proposal["element_family"],
+            )
+        )
+        if result.get("ok"):
+            store.clear(self.proposal_scope, proposal["proposal_id"])
+        return json.dumps(result)
+
+    def _make_remesh_proposal(
+        self,
+        geometry_job_id: str,
+        geometry_artifact_id: str,
+        dimension: int,
+        element_family: str | None,
+        min_size: float | None,
+        max_size: float | None,
+    ) -> str:
+        """Choose latest COMPLETED mesh as a suggested baseline, not as a silent default."""
+        supported = {1: "line", 2: "triangular", 3: "tetrahedral"}
+        latest = None
+        jobs = self.geometry.job_manager.list_by_project(self.geometry.project_id)
+        for job in jobs:
+            if job.type != JobType.MESH_GENERATE or job.status.value != "completed":
+                continue
+            result = job.result or {}
+            if str(result.get("geometry_artifact_id")) != geometry_artifact_id:
+                continue
+            if latest is None or (job.created_at, str(job.id)) > (
+                latest.created_at,
+                str(latest.id),
+            ):
+                latest = job
+
+        baseline = (latest.input.get("settings") or {}) if latest is not None else {}
+        requested_family = (
+            element_family or baseline.get("element_family") or supported.get(dimension)
+        )
+        error = self._validate_element_family(requested_family, dimension)
+        if error:
+            return self._error(error)
+        # Latest stored result is authoritative; if both sizes are absent there
+        # is no acceptable default for a remesh request.
+        proposed_min = min_size if min_size is not None else baseline.get("min_size")
+        proposed_max = max_size if max_size is not None else baseline.get("max_size")
+
+        current = {
+            "mesh_job_id": str(latest.id) if latest else None,
+            "dimension": baseline.get("dimension", dimension) if latest else None,
+            "element_family": baseline.get("element_family") if latest else None,
+            "min_size": baseline.get("min_size"),
+            "max_size": baseline.get("max_size"),
+        }
+        if proposed_min is None or proposed_max is None:
+            return json.dumps(
+                {
+                    "ok": False,
+                    "clarification_required": True,
+                    "submitted": False,
+                    "current_mesh": current,
+                    "message": "No previous complete size range is available. Ask the user for both minimum and maximum element sizes.",
+                }
+            )
+
+        settings, validation_error = self._validate_mesh_settings(
+            dimension,
+            proposed_min,
+            proposed_max,
+            requested_family,
+        )
+        if validation_error or settings is None:
+            return self._error(validation_error or "Invalid proposed settings")
+        store = self._proposal_store()
+        if store is None:
+            return self._error("Project context is not configured")
+        proposal = store.save(
+            self.proposal_scope,
+            {
+                "geometry_job_id": geometry_job_id,
+                "geometry_artifact_id": geometry_artifact_id,
+                "dimension": int(settings.dimension),
+                "element_family": settings.element_family.value,
+                "min_size": settings.min_size,
+                "max_size": settings.max_size,
+                "source_mesh_job_id": str(latest.id) if latest else None,
+            },
+        )
+        return json.dumps(
+            {
+                "ok": False,
+                "clarification_required": True,
+                "submitted": False,
+                "current_mesh": current,
+                "proposed_mesh": proposal,
+                "message": "Would you like to keep these element sizes for a new mesh version, or specify new sizes? Existing geometry and mesh versions will remain unchanged.",
+            }
+        )
+
+    def get_active_mesh_info(self) -> str:
+        """Inspect actual completed mesh versions and counts for the selected geometry.
+
+        Use for questions like "how many nodes/elements do I have?".
+        Never infer mesh state solely from geometry status.
+        """
+        active = json.loads(self.get_active_geometry())
+        if not active.get("ok"):
+            return json.dumps(active)
+        geometry_job_id = active["geometry_job_id"]
+        artifact_id = active["geometry_artifact_id"]
+        matches = []
+        for job in self.geometry.job_manager.list_by_project(self.geometry.project_id):
+            if job.type != JobType.MESH_GENERATE or job.status.value != "completed":
+                continue
+            request, result = job.input or {}, job.result or {}
+            if not (str(request.get("geometry_job_id", "")) == geometry_job_id
+                    or str(request.get("geometry_artifact_id", "")) == artifact_id
+                    or str(result.get("geometry_artifact_id", "")) == artifact_id):
+                continue
+            metadata = result.get("metadata") or {}
+            matches.append({"mesh_job_id": str(job.id),
+                            "settings": request.get("settings", {}),
+                            "metadata": metadata})
+        return json.dumps({"ok": True, "geometry_job_id": geometry_job_id,
+                           "mesh_version_count": len(matches),
+                           "latest_completed_mesh": matches[0] if matches else None,
+                           "mesh_versions": matches[:10]})
 
     def get_job_status(self, job_id: str) -> str:
         """Inspect an existing simulation job.

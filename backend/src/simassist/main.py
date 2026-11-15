@@ -14,6 +14,8 @@ from simassist.api.routes.mesh_quality import router as mesh_quality_router
 from simassist.api.routes.mesh_versions import router as mesh_versions_router
 from simassist.api.routes.projects import router as projects_router
 
+from simassist.api.routes.workspace import router as workspace_router
+
 app = FastAPI(
     title="SimAssist API",
     version="0.1.0",
@@ -26,7 +28,7 @@ app.add_middleware(
         "http://localhost:5173",
         "http://127.0.0.1:5173",
     ],
-    allow_methods=["GET", "POST", "PUT", "DELETE"],
+    allow_methods=["GET", "POST", "PUT", "DELETE", "PATCH"],
     allow_headers=["Content-Type"],
 )
 
@@ -40,3 +42,4 @@ app.include_router(mesh_quality_router)
 app.include_router(chat_router)
 app.include_router(jobs_events_router)
 app.include_router(projects_router)
+app.include_router(workspace_router)

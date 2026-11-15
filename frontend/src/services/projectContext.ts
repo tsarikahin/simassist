@@ -87,3 +87,12 @@ export async function setActiveGeometry(
 
   return readResponse<ProjectContext>(response);
 }
+
+export async function renameGeometry(projectId: string, jobId: string, name: string): Promise<void> {
+  await readResponse(await fetch(`${API_BASE_URL}/api/projects/${projectId}/geometries/${jobId}`, {
+    method: "PATCH", headers: {"Content-Type":"application/json"}, body: JSON.stringify({name}),
+  }));
+}
+export async function deleteGeometry(projectId: string, jobId: string): Promise<void> {
+  await readResponse(await fetch(`${API_BASE_URL}/api/projects/${projectId}/geometries/${jobId}`, {method: "DELETE"}));
+}

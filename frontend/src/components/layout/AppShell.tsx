@@ -28,8 +28,8 @@ import { SimulationViewer } from "../../features/viewer/components/SimulationVie
 import { AssistantPanel } from "../../features/assistant/components/AssistantPanel";
 import { SolverConsole } from "../../features/solver/components/SolverConsole";
 
-const DEMO_PROJECT_ID =
-  "11111111-1111-4111-8111-111111111111";
+import { createProject, listProjects, openLegacyProject, type WorkspaceProject } from "../../services/workspace";
+
 
 const STORAGE_KEY = "simassist.workspace.layout.v1";
 
@@ -126,7 +126,43 @@ function getAvailableWidth(
   );
 }
 
+// React StrictMode may replay mounting effects in development.
+// Reuse the same creation request to avoid two fresh projects per page load.
+let bootPromise: Promise<[WorkspaceProject[], WorkspaceProject]> | null = null;
+
 export function AppShell() {
+  const [projectId, setProjectId] = useState("");
+  const [projects, setProjects] = useState<WorkspaceProject[]>([]);
+  const [workspaceError, setWorkspaceError] = useState<string | null>(null);
+
+  useEffect(() => {
+    // A fresh empty project on every app load. Existing projects remain selectable.
+    let mounted = true;
+    if (!bootPromise) {
+      bootPromise = Promise.all([listProjects(), createProject()]).catch(error => {
+        bootPromise = null;
+        throw error;
+      });
+    }
+    void bootPromise.then(([previous, fresh]) => {
+      if (!mounted) return;
+      setProjects([fresh, ...previous]);
+      setProjectId(fresh.id);
+    }).catch(error => {if (mounted) setWorkspaceError(String(error));});
+    return () => {mounted = false;};
+  }, []);
+
+  const switchProject = (id: string) => {
+    setProjectId(id);
+    setActiveGeometryJobId(null);
+    setPreviewArtifactId(null);
+    setActiveJobIds([]);
+    setProjectError(null);
+    setProjectRevision(r => r + 1);
+    setMeshCompletionRevision(0);
+    navigateViewer("geometry");
+  };
+
   const [previewArtifactId, setPreviewArtifactId] =
     useState<string | null>(null);
 
@@ -138,6 +174,15 @@ export function AppShell() {
 
   const [projectRevision, setProjectRevision] = useState(0);
   const [meshCompletionRevision, setMeshCompletionRevision] = useState(0);
+  const [viewerNavigation, setViewerNavigation] = useState<{
+    mode: "geometry" | "mesh";
+    meshJobId?: string;
+    requestId: number;
+  }>({mode: "geometry", requestId: 0});
+
+  const navigateViewer = (mode: "geometry" | "mesh", meshJobId?: string) => {
+    setViewerNavigation(previous => ({mode, meshJobId, requestId: previous.requestId + 1}));
+  };
   const [projectError, setProjectError] =
     useState<string | null>(null);
 
@@ -167,10 +212,11 @@ export function AppShell() {
     const controller = new AbortController();
 
     async function restoreGeometry() {
+      if (!projectId) return;
       try {
         const [context, geometries] = await Promise.all([
-          getProjectContext(DEMO_PROJECT_ID, controller.signal),
-          getProjectGeometries(DEMO_PROJECT_ID, controller.signal),
+          getProjectContext(projectId, controller.signal),
+          getProjectGeometries(projectId, controller.signal),
         ]);
 
         if (controller.signal.aborted) return;
@@ -207,7 +253,7 @@ export function AppShell() {
 
     void restoreGeometry();
     return () => controller.abort();
-  }, []);
+  }, [projectId]);
 
   // Select an existing completed geometry from Project Explorer.
   const handleSelectGeometry = useCallback(
@@ -220,7 +266,7 @@ export function AppShell() {
       }
 
       try {
-        await setActiveGeometry(DEMO_PROJECT_ID, geometry.id);
+        await setActiveGeometry(projectId, geometry.id);
         setActiveGeometryJobId(geometry.id);
         setPreviewArtifactId(previewId);
         setProjectError(null);
@@ -232,7 +278,7 @@ export function AppShell() {
         );
       }
     },
-    [],
+    [projectId],
   );
 
   // Persist newly completed geometry and show its preview.
@@ -241,7 +287,7 @@ export function AppShell() {
       setPreviewArtifactId(previewId);
       setProjectRevision((revision) => revision + 1);
 
-      void setActiveGeometry(DEMO_PROJECT_ID, geometryJobId)
+      void setActiveGeometry(projectId, geometryJobId)
         .then(() => {
           setActiveGeometryJobId(geometryJobId);
           setProjectError(null);
@@ -254,7 +300,7 @@ export function AppShell() {
           );
         });
     },
-    [],
+    [projectId],
   );
 
   const handleMeshCompleted = useCallback((_meshJobId: string) => {
@@ -542,15 +588,42 @@ export function AppShell() {
             Project Explorer
           </div>
 
-          <ProjectExplorer
-            projectId={DEMO_PROJECT_ID}
+          <div className="workspace-project-switcher">
+            <select aria-label="Select project" value={projectId} onChange={event => switchProject(event.target.value)}>
+              {projects.map(project => <option key={project.id} value={project.id}>{project.name} ({project.id.slice(0, 6)})</option>)}
+            </select>
+            <button type="button" title="Create empty project" onClick={() => void createProject().then(project => {
+              setProjects(current => [project, ...current]);
+              switchProject(project.id);
+            }).catch(error => setWorkspaceError(String(error)))}>+ Project</button>
+            <button type="button" title="Open previously existing demo project" onClick={() => void openLegacyProject().then(project => {
+              setProjects(current => [project, ...current.filter(item => item.id !== project.id)]);
+              switchProject(project.id);
+            }).catch(error => setWorkspaceError(String(error)))}>Legacy</button>
+          </div>
+          {workspaceError && <p role="alert" style={{fontSize:12,color:"#fb7185"}}>{workspaceError}</p>}
+          {projectId && <ProjectExplorer
+            projectId={projectId}
             activeGeometryJobId={activeGeometryJobId}
             revision={projectRevision}
+            meshRevision={meshCompletionRevision}
             onSelectGeometry={(geometry) => {
+              navigateViewer("geometry");
+              void handleSelectGeometry(geometry);
+            }}
+            onSelectMesh={(geometry, meshJobId) => {
+              navigateViewer("mesh", meshJobId);
               void handleSelectGeometry(geometry);
             }}
             selectionError={projectError}
-          />
+            onGeometryChanged={(deletedJobId) => {
+              setProjectRevision(r => r + 1);
+              if (deletedJobId && deletedJobId === activeGeometryJobId) {
+                setActiveGeometryJobId(null);
+                setPreviewArtifactId(null);
+              }
+            }}
+          />}
         </aside>
 
         <div
@@ -573,12 +646,13 @@ export function AppShell() {
               Simulation Viewer
             </div>
 
-            <SimulationViewer
-              projectId={DEMO_PROJECT_ID}
+            {projectId && <SimulationViewer key={projectId}
+              projectId={projectId}
               previewArtifactId={previewArtifactId}
               geometryJobId={activeGeometryJobId}
               refreshRevision={meshCompletionRevision}
-            />
+              navigation={viewerNavigation}
+            />}
           </div>
 
           <div
@@ -591,12 +665,12 @@ export function AppShell() {
           />
 
           <div className="console-panel">
-            <SolverConsole
-              projectId={DEMO_PROJECT_ID}
+            {projectId && <SolverConsole key={projectId}
+              projectId={projectId}
               jobIds={activeJobIds}
               onPreviewReady={handleGeometryCompleted}
               onMeshCompleted={handleMeshCompleted}
-            />
+            />}
           </div>
         </section>
 
@@ -615,10 +689,10 @@ export function AppShell() {
             AI Assistant
           </div>
 
-          <AssistantPanel
-            projectId={DEMO_PROJECT_ID}
+          {projectId && <AssistantPanel key={projectId}
+            projectId={projectId}
             onJobsSubmitted={handleJobsSubmitted}
-          />
+          />}
         </aside>
       </main>
     </div>

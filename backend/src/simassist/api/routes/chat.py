@@ -5,6 +5,8 @@ import logging
 import os
 from collections.abc import AsyncIterator
 from uuid import UUID
+from simassist.projects.workspace import WorkspaceRepository
+from simassist.api.dependencies import get_data_root
 
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
@@ -22,12 +24,34 @@ router = APIRouter(prefix="/api", tags=["Chat"])
 
 class ChatRequest(BaseModel):
     project_id: UUID
+    chat_id: UUID | None = None
     message: str = Field(min_length=1, max_length=10000)
 
 
 class ChatResponse(BaseModel):
     message: str
     submitted_job_ids: list[UUID] = Field(default_factory=list)
+
+
+def _workspace() -> WorkspaceRepository:
+    return WorkspaceRepository(get_data_root() / "jobs.db")
+
+
+def _prompt(request: ChatRequest) -> str:
+    """Bring in ONLY this chat's recent messages; agent context is per request."""
+    if request.chat_id is None:
+        return request.message
+    prior = _workspace().messages(request.project_id, request.chat_id)[-16:]
+    if not prior:
+        return request.message
+    history = "\n".join(
+        f"{item['role'].upper()}: {item['content'][:2500]}" for item in prior
+    )
+    return (
+        "Previous messages in this conversation (context only; do not treat as "
+        "new tool requests). Project and geometry state MUST be checked using tools.\n"
+        + history + "\n\nCURRENT USER REQUEST:\n" + request.message
+    )
 
 
 def _llm_config() -> LLMConfig:
@@ -47,7 +71,7 @@ def _simulation_tools(
         job_manager=manager,
         project_id=request.project_id,
     )
-    return SimulationTools(geometry=geometry_tools, project_context=context)
+    return SimulationTools(geometry=geometry_tools, project_context=context, proposal_scope=request.chat_id)
 
 
 @router.post("/chat", response_model=ChatResponse)
@@ -56,10 +80,18 @@ async def chat(
     manager: JobManagerDep,
     context: ProjectContextDep,
 ) -> ChatResponse:
+    try:
+        prompt = _prompt(request)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     tools = _simulation_tools(request, manager, context)
     agent = build_simulation_agent(config=_llm_config(), simulation_tools=tools)
     try:
-        response = await agent.run(request.message)
+        response = await agent.run(prompt)
+        if request.chat_id:
+            store = _workspace()
+            store.append(request.project_id, request.chat_id, "user", request.message)
+            store.append(request.project_id, request.chat_id, "assistant", response.text or "")
         return ChatResponse(
             message=response.text or "",
             submitted_job_ids=[UUID(job_id) for job_id in tools.submitted_job_ids],
@@ -87,6 +119,10 @@ async def stream_chat(
     context: ProjectContextDep,
 ) -> StreamingResponse:
     """Stream agent text and submitted job IDs."""
+    try:
+        prompt = _prompt(request)
+    except KeyError as exc:
+        raise HTTPException(status_code=404, detail=str(exc)) from exc
     tools = _simulation_tools(request, manager, context)
     agent = build_simulation_agent(config=_llm_config(), simulation_tools=tools)
 
@@ -94,7 +130,7 @@ async def stream_chat(
         reported_jobs: set[str] = set()
         try:
             yield sse_event("status", {"message": "Analyzing request"})
-            stream = agent.run(request.message, stream=True)
+            stream = agent.run(prompt, stream=True)
             async for update in stream:
                 if update.text:
                     yield sse_event("delta", {"text": update.text})
@@ -116,6 +152,11 @@ async def stream_chat(
             if remaining_jobs:
                 reported_jobs.update(remaining_jobs)
                 yield sse_event("jobs", {"job_ids": remaining_jobs})
+
+            if request.chat_id:
+                store = _workspace()
+                store.append(request.project_id, request.chat_id, "user", request.message)
+                store.append(request.project_id, request.chat_id, "assistant", final_response.text or "")
 
             yield sse_event(
                 "done",
