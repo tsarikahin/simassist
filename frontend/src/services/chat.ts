@@ -5,6 +5,7 @@ const API_URL =
 export interface ChatRequest {
   project_id: string;
   chat_id?: string;
+  request_id?: string;
   message: string;
 }
 
@@ -28,11 +29,12 @@ export async function sendChatMessage(
     headers: {
       "Content-Type": "application/json",
     },
-    body: JSON.stringify(request),
+    body: JSON.stringify({ ...request, request_id: request.request_id ?? crypto.randomUUID() }),
   });
 
   if (!response.ok) {
-    throw new Error(`Chat failed: HTTP ${response.status}`);
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.detail ?? `Chat failed: HTTP ${response.status}`);
   }
 
   return (await response.json()) as ChatResponse;
@@ -51,15 +53,14 @@ export async function streamChatMessage(
         "Content-Type": "application/json",
         Accept: "text/event-stream",
       },
-      body: JSON.stringify(request),
+      body: JSON.stringify({ ...request, request_id: request.request_id ?? crypto.randomUUID() }),
       signal,
     },
   );
 
   if (!response.ok) {
-    throw new Error(
-      `Chat stream failed: HTTP ${response.status}`,
-    );
+    const error = await response.json().catch(() => null);
+    throw new Error(error?.detail ?? `Chat stream failed: HTTP ${response.status}`);
   }
 
   if (!response.body) {

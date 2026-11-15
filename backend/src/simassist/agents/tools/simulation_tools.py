@@ -798,6 +798,7 @@ class SimulationTools:
                             "settings": request.get("settings", {}),
                             "metadata": metadata})
         return json.dumps({"ok": True, "geometry_job_id": geometry_job_id,
+                           "source": "Latest completed mesh of the active geometry; viewer mesh selection is not synchronized",
                            "mesh_version_count": len(matches),
                            "latest_completed_mesh": matches[0] if matches else None,
                            "mesh_versions": matches[:10]})
