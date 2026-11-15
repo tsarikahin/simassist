@@ -1,257 +1,296 @@
-# SimAssist — Development Roadmap After Phase 11.14.1
+# SimAssist — Product & Engineering Roadmap
 
-**Audience:** Codex and project maintainer  
-**Status:** Proposed, prioritized roadmap; not a claim that these features already exist.  
-**Reference point:** SimAssist currently supports local-first agentic geometry creation, Gmsh meshing, persistent job/artifact tracking, VTK.js visualization, mesh versioning/quality inspection, interactive remesh clarification, projects/chats, and a unified Geometry / Mesh explorer.
+**Status:** Updated plan for Codex — 2026-11-15
+**Primary objective:** Evolve SimAssist from local-first AI-assisted CAD/meshing into a reliable, interactive FEM engineering workspace.
+**Current focus:** Viewer performance, engineering navigation, persistent CAD face selection, and the first real solver workflow.
 
-> **Codex: Start by inspecting the actual repository HEAD and existing tests.** The phase numbers below are planning labels, not a mandate to invent APIs or change architecture without checking source. Keep the application runnable after each phase; prefer incremental vertical slices over speculative infrastructure.
+> **Codex instruction:** Read the repository at its current HEAD before implementation. This roadmap identifies priorities and acceptance criteria; it does **not** claim that an item is complete just because a module or an API exists. Preserve existing users' projects, conversations, source CAD, mesh versions, and jobs. Ship each phase as a tested, end-to-end vertical slice.
 
-## 1. Product vision
+## 1. Product vision and principles
 
-Build an **AI-native, local-first computer-aided engineering (CAE) workspace** that connects:
+A local-first, AI-native CAE workflow:
 
-**intent → geometry → mesh → materials → physics → boundary conditions → solver → monitoring → postprocessing → verification**.
+**User intent → CAD geometry → inspection → meshing → selections → material/loads/BCs → solver → results → verification.**
 
-The user interacts with the system conversationally, but numerical engineering correctness is enforced by deterministic backend validation. The agent asks for missing engineering decisions instead of silently inventing parameters. Local computation and local LLM operation remain first-class; optional remote LLM providers are configurable.
+- **Backend owns engineering truth.** The LLM interprets requests and asks questions; deterministic code validates units, geometry references, job states, solver parameters, and numerical outputs.
+- **Human-in-the-loop when necessary.** Never guess unknown units, selected CAD faces, load direction, or a high-impact setting without a defined default/approval policy.
+- **Stable references and reproducibility.** Version geometry, meshes, named selections, studies, solver input decks, solver outputs, and provenance.
+- **Local-first.** Offline mesh/solver workflows must work without requiring cloud services; keep model-provider abstraction separate from engineering services.
+- **Fast interactive visualization.** CAD inspection should not require a completed FEM mesh. Rendering a large mesh should not block the rest of the application.
+- **Agent context is explicit.** Selected geometry/mesh/study is identified by backend-validated IDs, not guessed from the chat or just the latest job.
 
-### Core design principles
+## 2. Existing baseline and current verification status
 
-1. **Engineering truth lives outside the LLM.** Project context, geometry, mesh, units, jobs, and results are stored and verified by backend services.
-2. **Agent proposes, user decides when ambiguous, backend validates, worker executes.** Unapproved assumptions must not silently start high-impact tasks.
-3. **Each operation is versioned and inspectable.** Do not overwrite previous meshes, configurations, or simulation results.
-4. **Chat sessions are isolated; projects share engineering assets.** A project can contain multiple chats and multiple simulation studies.
-5. **Local-first, provider-agnostic.** LM Studio/OpenAI-compatible are supported; provider abstraction should not leak into physics logic.
-6. **Reproducibility matters.** Preserve units, parameters, solver versions, input decks, logs, errors, and provenance.
-7. **Protect the current working application.** Add migrations and tests; avoid destructive schema changes and mass refactors.
+The recently supplied backend-source snapshot includes these components; UI/runtime completion must still be verified against the current repository:
 
-## 2. Current baseline (implemented or recently worked on)
-
-| Area | Baseline |
+| Capability | Status / evidence to verify in HEAD |
 |---|---|
-| Backend | FastAPI, Python, `uv` workspace; SQLite jobs/artifact/project state |
-| Agent | Microsoft Agent Framework; geometry/mesh tools; configurable LLM provider |
-| Geometry | Gmsh OCC; 1D line, 2D square/rectangle/disk/annulus; 3D box/cylinder/sphere; boolean operations |
-| Meshing | Gmsh; 1D lines, 2D triangles/quads, 3D tetrahedra; all-quad verification rejects mixed surface elements |
-| Mesh revisions | Independent mesh jobs/artifacts attached to a geometry; historical versions preserved |
-| Visualization | React + VTK.js geometry/mesh viewer, quality metrics, version selection |
-| Orchestration | Async persisted jobs, worker, status events/monitoring; geometry → mesh workflows |
-| UX | Projects, persistent chats, rename/soft-delete geometry; unified Geometry / Mesh tree |
-| Clarification | Pending remesh proposal and confirmation; user can keep existing sizes or provide new ones |
+| FastAPI + `uv`, persistent SQLite jobs/artifacts, background worker | Existing baseline |
+| Gmsh geometry/meshing: 1D, 2D tri/quad, 3D tetra; Boolean and annulus | Existing baseline |
+| Independent mesh versions and quality summary | Existing baseline |
+| React + VTK.js geometry/mesh viewer, Project Explorer, chat | Existing baseline |
+| Persistent projects, chats, remesh clarifications | Existing baseline |
+| Role-aware conversation/context budgeting | `simassist/conversations/{context_service,budget,summary}.py` present; verify behavior/tests |
+| CAD file upload and inspection | `simassist/api/routes/files.py`, `simassist/files/` present; verify end-to-end |
+| CAD geometry preview | Previously developed; verify import → preview → viewer for STEP, including complex planar faces |
+| Mesh selection synchronized with agent | **Needs an explicit integration/regression check** |
+| 3D viewer performance at ~120k tetrahedra | **Needs profiling**; not yet established where latency occurs |
+| XYZ axes / camera shortcuts | Planned; inspect whether already implemented before adding |
+| CAD face picking / named selections | Planned; inspect existing topology metadata and preview mappings |
+| Simulation studies / FEM solver / field visualization | Planned; do not assume solver exists based on placeholder module |
 
-**Known integration caveats to confirm in HEAD:** model context currently comes from concatenated recent messages (Phase 11.15 addresses this); agent may describe a geometry from only bounding boxes and misidentify an annulus as a disk; the viewer-selected mesh version may not equal the agent's latest-completed mesh choice; frontend build regressions appeared during earlier patching and must be guarded by CI.
+**Historical phase numbering note:** An earlier roadmap called Active Engineering Context **11.16**, while a separate implementation specification also used **11.16** for File Upload & CAD Import. Treat those names as historical references; do not rename already completed work or rewrite Git history. Use the **new 11.18A/B/C milestones** below as the next unambiguous work items, after confirming outstanding active-selection/clarification issues.
 
-## Phase numbering reconciliation (file upload implementation)
+## 3. Immediate preflight — engineering context and regression hygiene
 
-Phase 11.15 conversation memory is implemented. The newer
-`PHASE_11_16_FILE_UPLOAD_AND_CAD_IMPORT.md` assigns **11.16** to file uploads
-and the first STEP import/meshing vertical slice, now implemented; see
-[file-upload.md](file-upload.md) for the shipped scope. The earlier proposed
-11.16 selection-semantics work below remains planned without a phase number.
-Later phase labels in this roadmap are proposals and must be reconciled before
-implementation; IGES/BREP, imported mesh viewing and STL reconstruction are not
-claimed as shipped by this slice.
+**Goal:** Establish a trustworthy starting point before adding CAD selection.
 
-## 3. Prioritized phases
+- Verify that frontend-selected geometry and mesh version are reflected correctly in backend engineering context; distinguish **selected**, **latest completed**, **queued**, and **failed** mesh versions.
+- Verify chat-scoped confirmation state, isolation between conversations, and safe replays (one approval → at most one job).
+- Verify STEP imports in 3D and 2D: solid counts, faces, holes, slots, units, topology and preview. Do not infer hole-free geometry from its bounding box.
+- Check that fresh project creation does not produce unlimited empty projects on every browser refresh.
+- Capture a performance baseline using a real ~120k tetrahedral-cell test mesh.
+- Add/maintain CI-equivalent commands: Ruff, backend tests, TypeScript build.
 
-### Phase 11.15 — Agent Conversation Memory & Context Management (NEXT)
+**Exit gate:** Existing workflows remain functional; selected engineering context is unambiguous; performance measurements are recorded. Address any blocking regression before starting 11.18B.
 
-**Deliverable:** Role-aware, per-chat durable conversation context with token budgets, incremental summaries, SSE-safe persistence, clear tool-call semantics, and verified project-state lookup.
+## 4. Phase 11.18A — Viewer Performance, XYZ Axes & Camera Controls — **NEXT**
 
-Use the companion document: **`PHASE_11_15_AGENT_CONVERSATION_MEMORY.md`** for implementation details and acceptance tests.
+**Outcome:** Large 3D models remain navigable, and users understand the spatial orientation of every view.
 
-**Gate:** Independent chats remain isolated; long chats work within local model context; no duplicate mesh/job submissions due to history replay.
+### A. Performance measurement first
 
-### Planned - Active Engineering Context & Selection Semantics
+Instrument separately:
 
-**Problem:** The viewer may display a selected *older* mesh, while the agent implicitly uses the latest successful mesh. Agent explanations sometimes conflate “no mesh discussed in this chat” with “no mesh in the project.”
+1. `.msh` read/parse time (backend).
+2. Surface extraction and preview generation time (backend).
+3. Cache hit/miss and serialized response size.
+4. HTTP transfer time and browser parse time.
+5. vtk.js geometry allocation, first render, and interaction frame rates.
 
-**Scope:**
+Measure cold and warm loads on at least a **~120k-tetrahedral-element mesh**. Record hardware, browser, file size, visible face/edge counts and timings. Do not assume 120k tets means 120k visible triangles or that GPU draw time is the bottleneck.
 
-- Explicit project-scoped `active_geometry_id`, optional `selected_mesh_job_id`, and eventually active study ID.
-- Clear UI vs backend semantics: which selection is authoritative for a tool call? Persist selection where appropriate; avoid silently changing project state from chat history.
-- Backend tools `get_active_engineering_context`, `list_mesh_versions`, `get_mesh_metadata`, `get_mesh_quality`; validate referenced jobs belong to the right project/geometry.
-- Accurate geometric topology metadata: distinguish **annulus (hole)** from disk; never infer topology solely from bounding box and surface count.
-- Clarification UI shows actual selected version, its source geometry, dimension, family, mesh size, and units.
-- Display stale/failed/queued mesh versions distinctly; don't portray a submitted job as complete.
+### B. Prioritized fixes, driven by the measurements
 
-**Gate:** Click an old Triangle v1 in explorer → agent answers explicitly which version is selected and uses it for a “remesh this version” operation *only under the documented selection policy*.
+- Extract/render **external boundary faces** for volume meshes rather than every interior tetrahedral face (preserve volumetric data separately for FEM/results).
+- Cache mesh previews by immutable artifact ID + extraction/format version; invalidate only when underlying artifact changes.
+- Deduplicate nodes, use indexed geometry and compact typed arrays; evaluate binary transfer versus JSON **with measurements**, not assumptions.
+- Run expensive extraction outside the request hot path (job/precompute/background worker if needed).
+- Avoid React remounts, repeated preview downloads and unnecessary vtk.js pipeline recreation on UI changes.
+- Make mesh edge visibility optional; support a *surface-only* mode for large models.
+- Preserve progress/loading/error feedback, cancellation/abort of stale requests, and UI responsiveness.
+- Keep backend-generated preview metadata consistent with actual geometry and cell counts.
 
-### Phase 11.17 — Interactive Engineering Forms & Validation
+### C. Orientation and navigation UX
 
-**Deliverable:** Structured, minimal clarification controls in UI, in addition to natural-language replies.
+- Add camera-linked, color-coded **X/Y/Z orientation triad** (with a consistent convention).
+- Add standard views: **+X, -X, +Y, -Y, +Z, -Z**, Fit to View, Reset Camera; consider a ViewCube if simpler controls are insufficient.
+- Provide orthographic/perspective toggle if practical and document default camera behavior.
+- Ensure axes/widgets remain correctly oriented for 1D, 2D, and 3D geometry, in both Geometry and Mesh modes.
+- Retain selection/highlight state across camera changes where appropriate.
 
-- Reusable confirmation payloads for mesh sizes, element family, algorithm, geometry dimension, units.
-- Present existing settings and proposed changes side by side; allow **Keep**, **Edit**, **Cancel** actions.
-- Render buttons only for real pending backend proposals, not synthetic UI-only approvals.
-- Validate size > 0, min <= max, compatible dimensions/families, unit consistency before a job is scheduled.
-- Per-chat pending proposals, expiry/cancellation when context changes, replay-safe confirmation.
-- Keep chat usable without structured controls (plain-text fallback).
+**Acceptance tests / exit gate**
 
-**Gate:** “Make the mesh finer” produces a constrained proposal; clicking confirm creates one job, clicking cancel creates none.
+- A representative ~120k-tet mesh loads and is interactively navigable; report before/after cold/warm timings and observed limitations. Do not invent a universal time or FPS target without target hardware.
+- No repeated full parse/render when switching an unrelated UI panel.
+- XYZ triad updates with camera rotation; standard view buttons and Fit/Reset work after resize and mode switches.
+- Rendering retains existing geometry/mesh selection and mesh versioning; no change to `.msh` artifacts.
 
-### Phase 11.18 — Mesh Quality Visualization & Comparison
+**Non-goals:** Heatmap, per-element quality histogram, new solver physics.
 
-**Deliverable:** Engineering-grade quality feedback rather than only summary numbers.
+## 5. Phase 11.18B — CAD Surface Picking & Topology Inspection
 
-- VTK.js per-cell quality **heatmap**, legend and color scale, selectable metric by element family.
-- Click/hover an element to inspect ID, local connectivity, type, and quality metric; highlight worst cells.
-- Mesh comparison: triangle vs quad; versions v1/v2; cells/nodes; size distribution; quality histograms; metadata.
-- Define metric formulas/ranges and any Gmsh-derived vs custom quality scores clearly. Avoid comparing non-equivalent metric scales as if identical.
-- Handle 1D/2D/3D elements appropriately; do not assume surface-only meshes for all analysis.
+**Outcome:** A user can click a visible CAD face and identify exactly **which surface** they mean, as a prerequisite for loads and boundary conditions.
 
-**Gate:** An annulus with two mesh versions can display a quality heatmap and a comparison without affecting geometry/mesh files.
+### Backend / data model
 
-### Phase 11.19 — Meshing Strategies & CAD Robustness
+- Preserve **CAD face provenance** during STEP/OCC import and preview tessellation. Each preview triangle must map to its owning CAD face in the corresponding immutable geometry revision.
+- Expose project/geometry-scoped face metadata: stable geometry artifact/revision reference, OCC/Gmsh face tag as a *local tag*, area (with units), bounds, geometric type where available, and a representative normal where meaningful.
+- Model face identity as `(geometry_revision_id, cad_face_key)` or an equivalent validated reference. **Never persist only a bare Gmsh tag as a universal stable identity.**
+- If a geometry changes or reimports, **do not silently reuse old face IDs**. Mark references stale and require reassignment or a verified remapping algorithm.
+- Keep CAD-face selection separate from individual mesh cell selection. Mesh boundary-cell-to-face mapping can be added for applying FEM loads later.
+- Validate file ownership/project scope and protect endpoints from cross-project references.
 
-**Deliverable:** Robust meshing workflows, particularly structured/mapped quadrilateral generation where possible.
+### Viewer / interaction
 
-- Separate element family, target sizing, meshing algorithm, recombination, and transfinite/mapped capabilities.
-- Address Gmsh all-quad limitations: coarse recombination can yield mixed quads/triangles; verify and report rather than silently claiming all-quads.
-- Optional structured annular quad strategy (e.g. suitable multi-block decomposition) **after** testing and topology-aware feasibility checks. Do not assume general topology admits all-quad with one algorithm.
-- Sensible mesh sizing proposals relative to geometric scales, with explicit approval if requested sizes are missing.
-- Support targeted local refinement, re-meshing provenance, deterministic meshing settings where feasible.
-- Richer CAD topology validation (holes, closed volumes, manifoldness, dimension consistency).
+- Implement vtk.js picking for CAD preview cells with `triangle/cell → CAD face` mapping.
+- Highlight the *entire CAD face*, not only the one tessellation triangle clicked; support hover, click, clear selection, and multi-select if simple to implement reliably.
+- Show a **Surface Inspector**: geometry revision, face label/ID, area, units, normal information/limitations, and selection count.
+- Optionally display surface numbers as toggleable labels; avoid flooding the viewport on complex geometry.
+- Selection must work without generating a tetrahedral FEM mesh and across viewer camera/mode changes.
+- Surface normals may vary over curved faces; don't present a single vector as the global normal field of an arbitrary curved surface.
 
-**Gate:** Repeated annulus Triangle ↔ Quad tests with identical settings are reproducible or report transparent diagnostic reasons; prior versions remain intact.
+### Agent integration
 
-### Phase 12.0 — Simulation Study Model & Units
+- Add typed, read-only tools to inspect selected faces and list faces on active geometry.
+- Support prompts like **“Which surface did I select?”** with authoritative backend metadata.
+- When user says “apply a load to this face” without an explicit, valid face selection, ask for clarification—do **not** use guessed face numbers.
 
-**Deliverable:** First-class **Study** entity linking immutable geometry/mesh references, physical model, materials, boundary conditions, solver configuration, and results.
+**Acceptance tests / exit gate**
 
-- Clear versioned data models and database migrations.
-- Unit-aware inputs and validation (mm vs m, N vs kN, MPa vs Pa; SI/internal convention).
-- Explicit geometry-to-mesh-to-study linkage; reject unrelated geometry or incompatible dimension.
-- Study lifecycle: draft → validated → queued → running → completed/failed.
-- Study cloning, parameter changes, and reproducibility metadata.
-- Do not add dozens of unused physics fields: focus on a vertical slice.
+- Import a STEP block, pick its top face, rotate/reload, and retrieve the **same face within that geometry revision**.
+- Pick a hole's cylindrical wall and a planar outer face on a more complex model; distinguish the two correctly.
+- Verify a 2D planar face is selectable without confusing 2D surface interior with volume-mesh boundaries.
+- A different geometry/project cannot claim another model's face ID; stale revisions are rejected visibly.
 
-**Gate:** A study can be created, edited, validated, and reopened after restart without initiating any solver.
+## 5.5. Phase 11.18B.5 - Modular Agent Architecture and Dynamic Loading - **COMPLETED**
 
-### Phase 12.1 — First Real FEM Solver Vertical Slice
+Completed 2026-11-15. One request-scoped MAF agent now receives core plus selected
+domain instructions/tools through a deterministic context-aware multi-label router
+and dependency registry. Chat-scoped proposals, role-aware memory, request replay
+handling, project/revision validation and SSE behavior are preserved.
 
-**Recommended initial scope:** 3D small-strain, static, linear elasticity on a simple solid beam/block, with known material parameters and displacement/force boundary conditions. Alternatively choose a simpler 2D formulation **if the selected solver supports it cleanly**. Pick one well-defined verified scenario, not a broad generic multiphysics layer.
+Validation: 225 backend tests, Ruff and frontend build pass. The 54-case routing
+corpus has no missing required tools. Average estimated instruction/schema
+footprint is 6,420 to 2,614 tokens; final local live median is 9.933 to 8.450 s
+(six cases per mode; mixed workflow remains slower). All intended live jobs
+completed without duplicates. Earlier slower runs and measurement limits are
+retained in the [implementation report](PHASE_11_18B5_IMPLEMENTATION_REPORT.md)
+and [benchmark data](benchmarks/agent-1118b5.json).
 
-- Evaluate local open-source solvers **CalculiX** and **Code_Aster** against Windows deployment requirements; choose a first supported path and document solver version/environment.
-- Map mesh topology/node sets to solver input; explicit material, loads, constraints.
-- Validate boundary-condition coverage, rigid-body modes, solver input, and units before running.
-- Run solver in an isolated worker subprocess; stream progress/logs; support cancel/timeout/failure reporting.
-- Store input deck, solver logs, result files, exit status, and provenance as immutable artifacts.
-- Use deterministic benchmark solutions (e.g. axial bar/tension or cantilever deflection) with tolerance-based checks.
+Safe fallback asks for clarification and never automatically replays actions.
+This completes the architecture phase; it does not mark missing CAD face-picking
+tools complete or implement named selections, materials, BCs or solvers.
+Phase 11.18C and subsequent phases remain outside this implementation.
 
-**Gate:** One end-to-end job solves a known benchmark and reproduces displacement/reaction outputs within declared tolerances.
+## 6. Phase 11.18C — Named Selections & Semantic Regions
 
-### Phase 12.2 — Simulation Monitoring & Postprocessing
+**Outcome:** Convert temporary picked faces into reusable engineering regions.
 
-- Job timeline, stages, log streaming, error details, cancellation/retry.
-- Visualize displacement magnitude/vector, deformed shape (with adjustable scale), stress fields (e.g. von Mises), reactions and mesh overlay.
-- Probe/select nodes or elements, read legend values and units, export images and field data.
-- Versioned results linked to exact study/mesh/solver configuration.
-- Sanity checks: mesh counts, solve status, equilibrium balance, numerical warnings.
+- Create/edit/rename/delete project/study-associated **named selections** (e.g. `fixed_support`, `loaded_face`, `bolt_hole_walls`).
+- Initially support groups of **CAD faces**; extend to edges, vertices, mesh node/element sets only when needed.
+- Persist references as geometry-revision-scoped typed entities; validate that all members belong to the same expected revision.
+- Show selection groups in the explorer and overlay their highlights in the viewer.
+- Add agent tools `list_named_selections`, `inspect_named_selection`, and optionally propose creation with user confirmation.
+- Define handling for remeshing (CAD selection persists if CAD revision unchanged) versus geometry revision changes (mark stale, prompt to repair).
+- Prepare mapping from CAD face selections to boundary mesh facets/node sets for the solver; preserve/verify tags through Gmsh meshing instead of relying on geometric proximity alone.
 
-**Gate:** User asks “show displacement and maximum von Mises stress,” gets backend-computed quantities with units and viewer rendering; not LLM-estimated answers.
+**Acceptance tests / exit gate**
 
-### Phase 12.3 — Agentic End-to-End Simulation Workflow
+- User picks two faces, saves `fixed_support`, restarts SimAssist, and can inspect/highlight the same CAD faces.
+- Remeshing the *same CAD revision* does not invalidate the named CAD-face selection.
+- Replacing the CAD revision does not silently attach `fixed_support` to unrelated faces.
 
-- Agent tools to inspect, create/edit, validate and launch studies.
-- Human-in-the-loop material/BC/solver settings when not provided.
-- Agent can orchestrate geometry → mesh → study → solver → postprocess, while respecting asynchronous dependencies.
-- Define safe, typed tool contracts; authoritative validation and bounded agent retries.
-- Concise project summaries and reproducible workflow reports.
+## 7. Phase 12.0 — Simulation Studies, Units, Materials & BC Model
 
-**Gate:** A user can request a simple structural benchmark conversationally, answer targeted clarification questions, and review a verified simulation result.
+**Outcome:** Reproducible, typed **Study** objects built on a selected geometry revision, compatible mesh version, material, boundary selections, loads and solver settings.
 
-### Beyond Phase 12 — Optional, not MVP blockers
+- Study lifecycle: `draft → validated → queued → running → completed/failed` (with cancel semantics as needed).
+- Explicit unit system and safe conversions (mm/m, N/kN, Pa/MPa/GPa). Never assume STEP model dimensions or pressure units silently.
+- First physics scope: **3D small-strain, linear static elasticity** with a single isotropic material, displacement constraints and surface force/traction/pressure.
+- Typed material properties: Young's modulus, Poisson's ratio (and density later where needed).
+- BCs and loads reference **named selections / validated CAD face references**, not arbitrary viewer triangle indices.
+- Validate vector direction, pressure convention (inward/outward), force-vs-traction distinction, and solver-compatible units.
+- Map selected CAD faces to actual boundary mesh faces/nodes; report missing/nonmatching regions explicitly.
+- Study revision records exact geometry, mesh, selection set, materials, BCs, solver configuration and provenance.
+- UI: simple study editor and readable summary; agent asks for only the missing essential fields before job submission.
 
-- Parametric CAD and parameter sweeps/DOE.
-- Optimization, surrogate models, PINN-assisted analysis and hybrid digital twins.
-- Additional solvers and physics (thermal, dynamics, nonlinear contact), incremental integrations.
-- Offline model selection/routing, model evaluations and latency/cost/VRAM diagnostics.
-- CAD interchange STEP import/export and richer Gmsh topology workflows.
-- Multi-user collaboration, permissions, external integrations only when local-first single-user workflow is mature.
+**Exit gate:** Save, reopen, validate and clone a study after restart **without executing a solver**; reject incompatible mesh/geometry, missing units or stale selections.
 
-## 4. Dependency order
+## 8. Phase 12.1 — First Real FEM Solver Vertical Slice
+
+**Outcome:** One validated structural benchmark executes end-to-end with a real numerical solver.
+
+- Compare local Windows deployment feasibility of **CalculiX** and **Code_Aster**; choose one supported route and record exact installation/runtime expectations. Avoid committing to both at once.
+- Export correct solver mesh/connectivity, face/node sets, material, loads and constraints into an input deck.
+- Start with a small **cantilever/block or axial bar** linear elasticity benchmark; specify analytical/reference displacement, reaction equilibrium and numeric tolerance.
+- Worker subprocess isolation, timeout, cancel, exit codes, streamed logs and reproducible artifact storage.
+- Validate constraints against rigid-body motion, load selection coverage, pressure direction, and solver input syntax before scheduling.
+- Preserve job/revision links: source STEP, mesh version, study revision, solver executable/version, input deck, output, logs and warnings.
+
+**Exit gate:** A known benchmark produces credible numeric displacement and reactions within predeclared tolerances; failures are actionable and no LLM estimates masquerade as solver results.
+
+## 9. Phase 12.2 — FEM Postprocessing & Results
+
+**Outcome:** Interactive exploration of **backend-computed** FEM fields in VTK.js.
+
+- Displacement vector and magnitude; undeformed/deformed geometry and adjustable deformation scale.
+- Stress tensor and von Mises field, correct association with nodes/cells/integration points; legends and units.
+- Probe results by node/element and named region; highlight maxima and selected boundary conditions.
+- Mesh overlay, camera controls, result selection by immutable study/job revision.
+- Export images and data files; provenance, warnings, result-status checks, equilibrium checks where practical.
+- Keep field conversion/averaging rules explicit; do not imply nodal stress is directly computed if it is extrapolated/averaged.
+
+**Exit gate:** “Show displacement and maximum von Mises stress” returns numerically computed values and a correctly labeled viewport, with exact study/result provenance.
+
+## 10. Phase 12.3 — Agentic End-to-End Simulation
+
+**Outcome:** Conversational orchestration of the complete verified pipeline.
+
+- Agent retrieves active engineering context, selected/named CAD faces, compatible mesh and study state via read-only inspection tools.
+- User can ask: “Fix this face, apply 100 N downward on that face, assign steel, and run a static simulation.”
+- Agent clarifies face identity, direction, units, missing material properties and solver assumptions instead of inventing them.
+- Backend stores typed proposal; user approves; worker executes validated study; agent reports job status accurately.
+- Async dependencies and retries cannot duplicate jobs; chat history cannot inadvertently replay tool actions.
+- Post-run report provides exact loads, BCs, mesh, solver version, numerical outputs, validation status and file links.
+
+**Exit gate:** A user uploads a STEP part, picks support/load surfaces, gives a natural-language simulation request, approves the setup, and inspects a verified displacement/stress result end-to-end.
+
+## 11. Deferred backlog — not blocking first FEM solver
+
+- **Mesh Quality Heatmap & Comparison (formerly 11.18):** per-cell heatmap, histogram, element picking and mesh version comparisons; keep existing quality summary/validation in place.
+- Advanced meshing/CAD robustness (formerly 11.19): mapped/transfinite quad support, targeted refinements, topology repair, large STL remeshing and mesh import extensions.
+- ViewCube polish, measurement/distance/angle tools, section clipping, exploded views, annotations.
+- Parametric CAD, parameter sweeps, optimization, surrogate/PINN workflows and hybrid digital twins.
+- Additional solver/physics modules: thermal, dynamics, nonlinear material/contact.
+- Advanced local model routing, memory/performance telemetry, multi-user collaboration.
+
+**Reprioritize deferred items only if a concrete benchmark or user workflow is blocked by them.**
+
+## 12. Dependency / delivery sequence
 
 ```mermaid
 flowchart TD
-    A[11.15 Conversation memory] --> U[11.16 STEP uploads and meshing]
-    U --> B[Planned active engineering context]
-    B --> C[11.17 Interactive clarification UI]
-    B --> D[11.18 Mesh quality visualization]
-    D --> E[11.19 Meshing robustness]
-    B --> F[12.0 Studies and units]
-    F --> G[12.1 First FEM solver]
-    G --> H[12.2 Postprocessing]
-    C --> I[12.3 End-to-end agent workflow]
-    H --> I
+    A[Preflight: Context & regression checks] --> B[11.18A Viewer performance and XYZ]
+    B --> C[11.18B CAD face picking]
+    C --> M[11.18B.5 Modular agent - completed]
+    M --> D[11.18C Named selections]
+    D --> E[12.0 Studies, units, materials and BCs]
+    E --> F[12.1 FEM solver]
+    F --> G[12.2 Results and postprocessing]
+    G --> H[12.3 Agentic simulation]
+    I[Conversation memory and CAD import already developed] --> A
+    J[Deferred heatmaps and advanced meshing] -. optional .-> B
 ```
 
-Some work can be parallelized, but solver correctness depends on explicit units/study model; conversational automation should not precede deterministic solver validation.
+The first three milestones can be kept narrow; **do not wait for a full CAD workstation UI before developing one verified solver case**.
 
-## 5. Near-term backlog: defects and UX polish
+## 13. Codex implementation workflow and guardrails
 
-- [ ] Confirm Phase 11.14.1 UI build and no runtime errors after navigation prop fix.
-- [ ] Confirm unified Geometry / Mesh tree selection and version refresh after meshing.
-- [ ] Fix agent reporting `no mesh yet` when completed meshes exist in the project.
-- [ ] Correct annulus topology descriptions: not simply a disk, even if a bounding box resembles one.
-- [ ] Avoid choosing latest completed mesh when user expects viewer-selected mesh without disclosure.
-- [ ] Make missing mesh parameters explicit rather than applying coarse defaults silently.
-- [ ] Preserve old mesh versions and soft-deleted geometry artifacts; make delete semantics clear in UI.
-- [ ] Review empty project initialization on reload: do not create an unlimited number of unwanted projects on every browser refresh without a clear product decision.
-- [ ] Guard job submission on invalid/failed geometry and mismatched dimensions/families.
-- [ ] Add regression coverage for TypeScript typecheck/build (previous patch broke build despite passing syntax checks).
+1. Inspect current repository, tests, dependency versions, and the specific route/viewer/job components before editing. Map existing APIs first.
+2. Make a short phase-specific plan and implement **one phase at a time**. Don't combine 11.18A, 11.18B and solver integration in one PR.
+3. Keep database migrations additive and preserve existing project/chat/mesh/STEP artifacts.
+4. Put topology and selection validation in backend services. No geometry/mesh data ownership in the LLM's message text.
+5. Keep chat/session and project boundaries explicit, including multi-chat pending proposals and stale selection handling.
+6. Keep existing job/event API backwards-compatible unless updating consumers in the same change.
+7. Write unit/integration tests for numerical geometry mapping, cross-project rejection, invalid/stale references and restart persistence.
+8. Run real frontend type checking and Vite build, not only syntax parsing. Test actual WebGL behavior in a browser for viewer phases.
+9. Report what was actually measured and tested, versus what still requires the user's Windows/GPU environment.
+10. Commit in small, reviewable changes; include migration/rollback notes when relevant.
 
-## 6. Architectural boundaries and data ownership
-
-| Responsibility | Owner |
-|---|---|
-| Conversation turns, chat titles, chat-local summaries | Workspace/conversation repository (SQLite) |
-| Active project and geometry | Project context service (SQLite) |
-| Mesh version history and verified element counts | Job/artifact storage and mesh verification service |
-| Pending user confirmations | Persisted chat-scoped clarification/proposal state |
-| Engineering parameter/unit validation | Backend domain services |
-| Tool invocation and dialogue | Microsoft Agent Framework agent |
-| Geometry and meshing | Gmsh adapter/worker |
-| Solver execution | Dedicated solver adapter/worker (future) |
-| Visualization and user interaction | React/VTK.js frontend |
-
-Do not let a chat summary become the only record of an engineering decision. Persist approved values in typed models.
-
-## 7. How Codex should work on this repository
-
-1. **Read** the current source, `pyproject.toml`, frontend build scripts, and tests before making edits; use the installed Microsoft Agent Framework API rather than guessing from online snippets.
-2. Create a small implementation plan and list changed files, migrations, and behavioral compatibility risks.
-3. Work on a **focused phase/branch**, preserving the current running application and demo/legacy data.
-4. Write tests for each new backend contract, including failures, restarts, and persistent state.
-5. Use **real frontend typecheck/build**, not merely syntax parsing.
-6. Keep streaming event schema backward-compatible unless the frontend is updated in the same change.
-7. Never silently generate geometry, mesh, or solver jobs from remembered text or partial proposals.
-8. Document setup/restart steps for FastAPI, worker, and frontend.
-9. Report precisely which commands passed/failed and what was not tested.
-10. Propose a concise conventional commit per phase.
-
-### Suggested validation commands
+### Validation commands from project root
 
 ```powershell
+uv run --package simassist-backend ruff check backend/
+uv run --package simassist-backend ruff format --check backend/
 uv run --package simassist-backend pytest backend/tests -q
 npm --prefix frontend run build
 git diff --check
 git status
 ```
 
-If present, run Ruff and project-specific integration tests too. Never claim tests passed without running them.
+If Ruff isn't available in the environment, use `uvx ruff` or add it as a dev dependency; do not silently skip checks. For performance phase, additionally record browser Network and Performance timings and backend extraction timings.
 
-## 8. Definition of done for each phase
+### Definition of Done (every phase)
 
-- Feature works end-to-end through real API and UI where relevant.
-- Previously persisted projects, chats, geometries, mesh versions, and artifacts remain usable.
-- New APIs are typed, validated, and tested.
-- Agent can state clearly whether a job is **proposed, queued, running, completed, or failed**.
-- No unexplained background job submission; no accidental repeated execution from history.
-- Local/offline workflows still work; no new required cloud subscription.
-- Tests/build pass, known limitations are documented, and Git history is clean.
+- Works through the actual backend API and frontend where applicable; not only through mocks.
+- Builds and tests pass, with exact commands and pass/fail results reported.
+- Existing geometry/mesh/chat/project/file features remain usable after restart.
+- Engineering references are validated by project, geometry revision and mesh version.
+- The interface clearly distinguishes selected, proposed, queued, completed and failed states.
+- No numerical/physics values fabricated by an LLM.
+- Performance claims are supported by reproducible measurements; limitations are documented.
 
-## 9. First Codex prompt
+## 14. Ready-to-paste Codex task — Phase 11.18A
 
-Copy/paste the following into Codex after adding the companion Markdown file to the repository:
-
-> Read `PHASE_11_15_AGENT_CONVERSATION_MEMORY.md` and `SIMASSIST_NEXT_STEPS_ROADMAP.md`. Inspect the actual repository, the installed Microsoft Agent Framework version, and the Phase 11.14 workspace/chat implementation. Implement **only Phase 11.15** first. Keep all existing geometry/mesh jobs, SSE behavior, chat routes, and clarification flows backward-compatible. Do not concatenate history into a user prompt. Use role-aware messages with a configurable context budget and additive SQLite persistence, plus tested long-chat summarization/fallback. Add tests for chat isolation, streaming persistence, model context limits, and no re-execution of historical tool calls. Run backend tests and frontend build; show a file-by-file summary, test results, migration notes, and unresolved risks. Do not start later roadmap phases without approval.
+> Read `ROADMAP.md` and inspect the current SimAssist codebase (particularly Gmsh mesh preview extraction, preview routes, frontend VTK.js viewer, and existing mesh/version state). Implement **only Phase 11.18A: Viewer Performance, XYZ Axes & Camera Controls**. Start with instrumentation of a ~120k-tetrahedral-cell mesh and measure backend parse/extraction, transfer, browser parse and first rendering. Make bottleneck-driven improvements (external surface-only preview, preview caching, compact transfer, optional edges as needed), add camera-linked XYZ orientation and standard view/Fit/Reset controls, and preserve selection/version behavior. Don't implement CAD face picking, mesh quality heatmaps or solver integration yet. Add tests, run Ruff/backend tests/frontend build, and report before/after performance numbers and remaining limitations. Preserve all existing artifacts and database state.

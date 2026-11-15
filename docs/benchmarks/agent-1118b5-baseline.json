@@ -1,0 +1,13 @@
+{
+  "label": "pre-refactor offline baseline; no provider inference",
+  "maf": "1.26.0",
+  "python": "3.14.3",
+  "samples": 30,
+  "instructions_bytes": 8577,
+  "instructions_estimated_tokens": 2871,
+  "schema_bytes": 10609,
+  "schema_estimated_tokens": 3549,
+  "tools": 16,
+  "setup_median_ms": 23.328350012889132,
+  "setup_p95_ms": 34.618499979842454
+}

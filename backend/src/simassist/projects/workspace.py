@@ -499,6 +499,18 @@ class WorkspaceRepository:
                 ),
             )
 
+    def latest_context_user(self, project_id, chat_id):
+        """Bounded routing hint, excluding current, failed and interrupted turns."""
+        self.chat(project_id, chat_id)
+        with self._connect() as db:
+            row = db.execute(
+                "SELECT id,content FROM workspace_messages m WHERE chat_id=? AND role='user' "
+                "AND NOT EXISTS (SELECT 1 FROM conversation_turns t "
+                "WHERE t.user_message_id=m.id AND t.status!='completed') ORDER BY id DESC LIMIT 1",
+                (str(chat_id),),
+            ).fetchone()
+        return dict(row) if row else None
+
     def context_messages(self, project_id, chat_id):
         """Only committed exchanges enter model history; failed user turns stay visible in UI."""
         self.chat(project_id, chat_id)

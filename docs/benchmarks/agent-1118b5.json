@@ -1,0 +1,1652 @@
+{
+  "environment": {
+    "python": "3.14.3",
+    "platform": "Windows-11-10.0.26200-SP0",
+    "maf": "1.26.0",
+    "model": "spark-x2.6-4b"
+  },
+  "method": "Offline estimates, no inference. Setup includes routing/composition, schema generation, client and Agent construction; validated DB context resolution is covered by live setup.",
+  "baseline": {
+    "instruction_bytes": 8577,
+    "schema_bytes": 10609,
+    "instruction_estimated_tokens": 2871,
+    "schema_estimated_tokens": 3549,
+    "total_estimated_tokens": 6420,
+    "tools": 16
+  },
+  "modular_mean": {
+    "instruction_bytes": 3999.4074074074074,
+    "schema_bytes": 3769.074074074074,
+    "instruction_estimated_tokens": 1345.4814814814815,
+    "schema_estimated_tokens": 1268.5740740740741,
+    "total_estimated_tokens": 2614.0555555555557,
+    "tools": 8.981481481481481
+  },
+  "routing": {
+    "cases": 54,
+    "exact_matches": 54,
+    "micro_precision": 1.0,
+    "micro_recall": 1.0,
+    "fallback_rate": 0.09259259259259259,
+    "missing_required_tools": 0,
+    "baseline_static_availability_precision": 0.4722222222222222,
+    "baseline_static_availability_recall": 0.9532710280373832,
+    "note": "Baseline is static capability availability, not an LLM intent classifier. Selection guidance is new, persistent selection tools remain unavailable.",
+    "composition_latency": {
+      "samples": 54,
+      "median_ms": 5.466900009196252,
+      "p95_ms": 12.094100005924702
+    }
+  },
+  "setup_latency": {
+    "monolithic": {
+      "samples": 180,
+      "median_ms": 25.41269999346696,
+      "p95_ms": 63.080099993385375
+    },
+    "modular": {
+      "samples": 180,
+      "median_ms": 11.726800032192841,
+      "p95_ms": 30.92700004344806
+    }
+  },
+  "cases": [
+    {
+      "message": "Create a 2D annulus, inner radius 1, outer radius 2.",
+      "domains": [
+        "geometry",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "geometry"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 3557,
+        "schema_bytes": 3918,
+        "instruction_estimated_tokens": 1198,
+        "schema_estimated_tokens": 1318,
+        "total_estimated_tokens": 2516,
+        "tools": 9
+      }
+    },
+    {
+      "message": "Create a box length 10 width 20 height 30 mm.",
+      "domains": [
+        "geometry",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "geometry"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 3557,
+        "schema_bytes": 3918,
+        "instruction_estimated_tokens": 1198,
+        "schema_estimated_tokens": 1318,
+        "total_estimated_tokens": 2516,
+        "tools": 9
+      }
+    },
+    {
+      "message": "Draw a square of size 4 mm.",
+      "domains": [
+        "geometry",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "geometry"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 3557,
+        "schema_bytes": 3918,
+        "instruction_estimated_tokens": 1198,
+        "schema_estimated_tokens": 1318,
+        "total_estimated_tokens": 2516,
+        "tools": 9
+      }
+    },
+    {
+      "message": "Fuse these two inline disks.",
+      "domains": [
+        "geometry",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "geometry"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 3557,
+        "schema_bytes": 3918,
+        "instruction_estimated_tokens": 1198,
+        "schema_estimated_tokens": 1318,
+        "total_estimated_tokens": 2516,
+        "tools": 9
+      }
+    },
+    {
+      "message": "What geometry primitives are supported?",
+      "domains": [
+        "geometry",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "geometry"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 3557,
+        "schema_bytes": 3918,
+        "instruction_estimated_tokens": 1198,
+        "schema_estimated_tokens": 1318,
+        "total_estimated_tokens": 2516,
+        "tools": 9
+      }
+    },
+    {
+      "message": "Generate a quad mesh for this geometry.",
+      "domains": [
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "meshing"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 4654,
+        "schema_bytes": 3950,
+        "instruction_estimated_tokens": 1564,
+        "schema_estimated_tokens": 1329,
+        "total_estimated_tokens": 2893,
+        "tools": 10
+      }
+    },
+    {
+      "message": "Mesh it.",
+      "domains": [
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "meshing"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 4654,
+        "schema_bytes": 3950,
+        "instruction_estimated_tokens": 1564,
+        "schema_estimated_tokens": 1329,
+        "total_estimated_tokens": 2893,
+        "tools": 10
+      }
+    },
+    {
+      "message": "Make it finer.",
+      "domains": [
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "meshing"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 4688,
+        "schema_bytes": 3950,
+        "instruction_estimated_tokens": 1575,
+        "schema_estimated_tokens": 1329,
+        "total_estimated_tokens": 2904,
+        "tools": 10
+      }
+    },
+    {
+      "message": "Change to quads.",
+      "domains": [
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "meshing"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 4654,
+        "schema_bytes": 3950,
+        "instruction_estimated_tokens": 1564,
+        "schema_estimated_tokens": 1329,
+        "total_estimated_tokens": 2893,
+        "tools": 10
+      }
+    },
+    {
+      "message": "How many nodes and elements are there?",
+      "domains": [
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "meshing"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 4620,
+        "schema_bytes": 3950,
+        "instruction_estimated_tokens": 1552,
+        "schema_estimated_tokens": 1329,
+        "total_estimated_tokens": 2881,
+        "tools": 10
+      }
+    },
+    {
+      "message": "Mesh versions?",
+      "domains": [
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "meshing"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 4620,
+        "schema_bytes": 3950,
+        "instruction_estimated_tokens": 1552,
+        "schema_estimated_tokens": 1329,
+        "total_estimated_tokens": 2881,
+        "tools": 10
+      }
+    },
+    {
+      "message": "Remesh with min 0.1 max 0.5.",
+      "domains": [
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "meshing"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 4620,
+        "schema_bytes": 3950,
+        "instruction_estimated_tokens": 1552,
+        "schema_estimated_tokens": 1329,
+        "total_estimated_tokens": 2881,
+        "tools": 10
+      }
+    },
+    {
+      "message": "Can I use hexahedral elements?",
+      "domains": [
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "meshing"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 4620,
+        "schema_bytes": 3950,
+        "instruction_estimated_tokens": 1552,
+        "schema_estimated_tokens": 1329,
+        "total_estimated_tokens": 2881,
+        "tools": 10
+      }
+    },
+    {
+      "message": "Yes, keep the same sizes.",
+      "domains": [
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "meshing"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 4619,
+        "schema_bytes": 3950,
+        "instruction_estimated_tokens": 1552,
+        "schema_estimated_tokens": 1329,
+        "total_estimated_tokens": 2881,
+        "tools": 10
+      }
+    },
+    {
+      "message": "No, cancel it.",
+      "domains": [
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "meshing"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 4619,
+        "schema_bytes": 3950,
+        "instruction_estimated_tokens": 1552,
+        "schema_estimated_tokens": 1329,
+        "total_estimated_tokens": 2881,
+        "tools": 10
+      }
+    },
+    {
+      "message": "Yes.",
+      "domains": [
+        "workspace"
+      ],
+      "modules": [
+        "workspace"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [
+        "request_capability"
+      ],
+      "modular": {
+        "instruction_bytes": 2879,
+        "schema_bytes": 1776,
+        "instruction_estimated_tokens": 972,
+        "schema_estimated_tokens": 604,
+        "total_estimated_tokens": 1576,
+        "tools": 6
+      }
+    },
+    {
+      "message": "Inspect the uploaded STEP file and list its faces.",
+      "domains": [
+        "cad_inspection",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "cad_inspection"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 3499,
+        "schema_bytes": 2201,
+        "instruction_estimated_tokens": 1179,
+        "schema_estimated_tokens": 746,
+        "total_estimated_tokens": 1925,
+        "tools": 7
+      }
+    },
+    {
+      "message": "Inspect it.",
+      "domains": [
+        "cad_inspection",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "cad_inspection"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 3499,
+        "schema_bytes": 2201,
+        "instruction_estimated_tokens": 1179,
+        "schema_estimated_tokens": 746,
+        "total_estimated_tokens": 1925,
+        "tools": 7
+      }
+    },
+    {
+      "message": "List project files.",
+      "domains": [
+        "cad_inspection",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "cad_inspection"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 3499,
+        "schema_bytes": 2201,
+        "instruction_estimated_tokens": 1179,
+        "schema_estimated_tokens": 746,
+        "total_estimated_tokens": 1925,
+        "tools": 7
+      }
+    },
+    {
+      "message": "Import this STEP.",
+      "domains": [
+        "cad_inspection",
+        "geometry",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "cad_inspection",
+        "geometry",
+        "cad_import"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 4465,
+        "schema_bytes": 4752,
+        "instruction_estimated_tokens": 1501,
+        "schema_estimated_tokens": 1596,
+        "total_estimated_tokens": 3097,
+        "tools": 11
+      }
+    },
+    {
+      "message": "Import this STEP, mesh it, then name the loaded face.",
+      "domains": [
+        "cad_inspection",
+        "geometry",
+        "meshing",
+        "selections",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "cad_inspection",
+        "geometry",
+        "cad_import",
+        "meshing",
+        "cad_meshing",
+        "geometry_meshing",
+        "selections"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 7362,
+        "schema_bytes": 11188,
+        "instruction_estimated_tokens": 2466,
+        "schema_estimated_tokens": 3742,
+        "total_estimated_tokens": 6208,
+        "tools": 18
+      }
+    },
+    {
+      "message": "Inspect it and then mesh it.",
+      "domains": [
+        "cad_inspection",
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "cad_inspection",
+        "meshing",
+        "cad_meshing"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 5741,
+        "schema_bytes": 5608,
+        "instruction_estimated_tokens": 1926,
+        "schema_estimated_tokens": 1882,
+        "total_estimated_tokens": 3808,
+        "tools": 12
+      }
+    },
+    {
+      "message": "Select the four bolt-hole faces and call them bolt_holes.",
+      "domains": [
+        "cad_inspection",
+        "selections",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "cad_inspection",
+        "selections"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 3892,
+        "schema_bytes": 2201,
+        "instruction_estimated_tokens": 1310,
+        "schema_estimated_tokens": 746,
+        "total_estimated_tokens": 2056,
+        "tools": 7
+      }
+    },
+    {
+      "message": "Name this face inlet.",
+      "domains": [
+        "cad_inspection",
+        "selections",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "cad_inspection",
+        "selections"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 3892,
+        "schema_bytes": 2201,
+        "instruction_estimated_tokens": 1310,
+        "schema_estimated_tokens": 746,
+        "total_estimated_tokens": 2056,
+        "tools": 7
+      }
+    },
+    {
+      "message": "Use that face.",
+      "domains": [
+        "cad_inspection",
+        "selections",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "cad_inspection",
+        "selections"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 3892,
+        "schema_bytes": 2201,
+        "instruction_estimated_tokens": 1310,
+        "schema_estimated_tokens": 746,
+        "total_estimated_tokens": 2056,
+        "tools": 7
+      }
+    },
+    {
+      "message": "Create named selections.",
+      "domains": [
+        "cad_inspection",
+        "selections",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "cad_inspection",
+        "selections"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 3892,
+        "schema_bytes": 2201,
+        "instruction_estimated_tokens": 1310,
+        "schema_estimated_tokens": 746,
+        "total_estimated_tokens": 2056,
+        "tools": 7
+      }
+    },
+    {
+      "message": "Mesh the attached CAD.",
+      "domains": [
+        "cad_inspection",
+        "geometry",
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "cad_inspection",
+        "geometry",
+        "cad_import",
+        "meshing",
+        "cad_meshing",
+        "geometry_meshing"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 6969,
+        "schema_bytes": 11188,
+        "instruction_estimated_tokens": 2335,
+        "schema_estimated_tokens": 3742,
+        "total_estimated_tokens": 6077,
+        "tools": 18
+      }
+    },
+    {
+      "message": "Mesh it.",
+      "domains": [
+        "cad_inspection",
+        "geometry",
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "cad_inspection",
+        "geometry",
+        "cad_import",
+        "meshing",
+        "cad_meshing",
+        "geometry_meshing"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 6969,
+        "schema_bytes": 11188,
+        "instruction_estimated_tokens": 2335,
+        "schema_estimated_tokens": 3742,
+        "total_estimated_tokens": 6077,
+        "tools": 18
+      }
+    },
+    {
+      "message": "Create a disk and mesh it.",
+      "domains": [
+        "geometry",
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "geometry",
+        "meshing",
+        "geometry_meshing"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 5681,
+        "schema_bytes": 9121,
+        "instruction_estimated_tokens": 1906,
+        "schema_estimated_tokens": 3053,
+        "total_estimated_tokens": 4959,
+        "tools": 15
+      }
+    },
+    {
+      "message": "Create an annulus with a triangular mesh.",
+      "domains": [
+        "geometry",
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "geometry",
+        "meshing",
+        "geometry_meshing"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 5681,
+        "schema_bytes": 9121,
+        "instruction_estimated_tokens": 1906,
+        "schema_estimated_tokens": 3053,
+        "total_estimated_tokens": 4959,
+        "tools": 15
+      }
+    },
+    {
+      "message": "What has completed?",
+      "domains": [
+        "workspace"
+      ],
+      "modules": [
+        "workspace"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [
+        "list_project_jobs"
+      ],
+      "modular": {
+        "instruction_bytes": 2792,
+        "schema_bytes": 1776,
+        "instruction_estimated_tokens": 943,
+        "schema_estimated_tokens": 604,
+        "total_estimated_tokens": 1547,
+        "tools": 6
+      }
+    },
+    {
+      "message": "Check job status.",
+      "domains": [
+        "workspace"
+      ],
+      "modules": [
+        "workspace"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 2792,
+        "schema_bytes": 1776,
+        "instruction_estimated_tokens": 943,
+        "schema_estimated_tokens": 604,
+        "total_estimated_tokens": 1547,
+        "tools": 6
+      }
+    },
+    {
+      "message": "Hello.",
+      "domains": [
+        "workspace"
+      ],
+      "modules": [
+        "workspace"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 2792,
+        "schema_bytes": 1776,
+        "instruction_estimated_tokens": 943,
+        "schema_estimated_tokens": 604,
+        "total_estimated_tokens": 1547,
+        "tools": 6
+      }
+    },
+    {
+      "message": "Thank you.",
+      "domains": [
+        "workspace"
+      ],
+      "modules": [
+        "workspace"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 2792,
+        "schema_bytes": 1776,
+        "instruction_estimated_tokens": 943,
+        "schema_estimated_tokens": 604,
+        "total_estimated_tokens": 1547,
+        "tools": 6
+      }
+    },
+    {
+      "message": "Solve for displacement.",
+      "domains": [
+        "workspace"
+      ],
+      "modules": [
+        "workspace"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 2792,
+        "schema_bytes": 1776,
+        "instruction_estimated_tokens": 943,
+        "schema_estimated_tokens": 604,
+        "total_estimated_tokens": 1547,
+        "tools": 6
+      }
+    },
+    {
+      "message": "Create a simulation study.",
+      "domains": [
+        "workspace"
+      ],
+      "modules": [
+        "workspace"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 2792,
+        "schema_bytes": 1776,
+        "instruction_estimated_tokens": 943,
+        "schema_estimated_tokens": 604,
+        "total_estimated_tokens": 1547,
+        "tools": 6
+      }
+    },
+    {
+      "message": "Assign material steel.",
+      "domains": [
+        "workspace"
+      ],
+      "modules": [
+        "workspace"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 2792,
+        "schema_bytes": 1776,
+        "instruction_estimated_tokens": 943,
+        "schema_estimated_tokens": 604,
+        "total_estimated_tokens": 1547,
+        "tools": 6
+      }
+    },
+    {
+      "message": "Apply boundary conditions.",
+      "domains": [
+        "workspace"
+      ],
+      "modules": [
+        "workspace"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 2792,
+        "schema_bytes": 1776,
+        "instruction_estimated_tokens": 943,
+        "schema_estimated_tokens": 604,
+        "total_estimated_tokens": 1547,
+        "tools": 6
+      }
+    },
+    {
+      "message": "Solve stress and generate a mesh.",
+      "domains": [
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "meshing"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 4620,
+        "schema_bytes": 3950,
+        "instruction_estimated_tokens": 1552,
+        "schema_estimated_tokens": 1329,
+        "total_estimated_tokens": 2881,
+        "tools": 10
+      }
+    },
+    {
+      "message": "Do not create geometry or mesh anything; report job status.",
+      "domains": [
+        "workspace"
+      ],
+      "modules": [
+        "workspace"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [
+        "list_project_jobs"
+      ],
+      "modular": {
+        "instruction_bytes": 2792,
+        "schema_bytes": 1776,
+        "instruction_estimated_tokens": 943,
+        "schema_estimated_tokens": 604,
+        "total_estimated_tokens": 1547,
+        "tools": 6
+      }
+    },
+    {
+      "message": "Don't mesh; create a disk.",
+      "domains": [
+        "geometry",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "geometry"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 3557,
+        "schema_bytes": 3918,
+        "instruction_estimated_tokens": 1198,
+        "schema_estimated_tokens": 1318,
+        "total_estimated_tokens": 2516,
+        "tools": 9
+      }
+    },
+    {
+      "message": "Explain FEM without submitting any jobs.",
+      "domains": [
+        "workspace"
+      ],
+      "modules": [
+        "workspace"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 2792,
+        "schema_bytes": 1776,
+        "instruction_estimated_tokens": 943,
+        "schema_estimated_tokens": 604,
+        "total_estimated_tokens": 1547,
+        "tools": 6
+      }
+    },
+    {
+      "message": "Make it smaller.",
+      "domains": [
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "meshing"
+      ],
+      "fallback": true,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 4707,
+        "schema_bytes": 3950,
+        "instruction_estimated_tokens": 1581,
+        "schema_estimated_tokens": 1329,
+        "total_estimated_tokens": 2910,
+        "tools": 10
+      }
+    },
+    {
+      "message": "Do it again.",
+      "domains": [
+        "geometry",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "geometry"
+      ],
+      "fallback": true,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 3644,
+        "schema_bytes": 3918,
+        "instruction_estimated_tokens": 1227,
+        "schema_estimated_tokens": 1318,
+        "total_estimated_tokens": 2545,
+        "tools": 9
+      }
+    },
+    {
+      "message": "Change that.",
+      "domains": [
+        "geometry",
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "geometry",
+        "meshing",
+        "geometry_meshing"
+      ],
+      "fallback": true,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 5802,
+        "schema_bytes": 9121,
+        "instruction_estimated_tokens": 1946,
+        "schema_estimated_tokens": 3053,
+        "total_estimated_tokens": 4999,
+        "tools": 15
+      }
+    },
+    {
+      "message": "Do it.",
+      "domains": [
+        "workspace"
+      ],
+      "modules": [
+        "workspace"
+      ],
+      "fallback": true,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 2879,
+        "schema_bytes": 1776,
+        "instruction_estimated_tokens": 972,
+        "schema_estimated_tokens": 604,
+        "total_estimated_tokens": 1576,
+        "tools": 6
+      }
+    },
+    {
+      "message": "Change something.",
+      "domains": [
+        "workspace"
+      ],
+      "modules": [
+        "workspace"
+      ],
+      "fallback": true,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 2879,
+        "schema_bytes": 1776,
+        "instruction_estimated_tokens": 972,
+        "schema_estimated_tokens": 604,
+        "total_estimated_tokens": 1576,
+        "tools": 6
+      }
+    },
+    {
+      "message": "Yes, keep the same sizes.",
+      "domains": [
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "meshing"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 4635,
+        "schema_bytes": 3950,
+        "instruction_estimated_tokens": 1557,
+        "schema_estimated_tokens": 1329,
+        "total_estimated_tokens": 2886,
+        "tools": 10
+      }
+    },
+    {
+      "message": "Mesh it.",
+      "domains": [
+        "meshing",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "meshing"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 4636,
+        "schema_bytes": 3950,
+        "instruction_estimated_tokens": 1558,
+        "schema_estimated_tokens": 1329,
+        "total_estimated_tokens": 2887,
+        "tools": 10
+      }
+    },
+    {
+      "message": "Hello.",
+      "domains": [
+        "workspace"
+      ],
+      "modules": [
+        "workspace"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 2791,
+        "schema_bytes": 1776,
+        "instruction_estimated_tokens": 943,
+        "schema_estimated_tokens": 604,
+        "total_estimated_tokens": 1547,
+        "tools": 6
+      }
+    },
+    {
+      "message": "Report completed jobs.",
+      "domains": [
+        "workspace"
+      ],
+      "modules": [
+        "workspace"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [
+        "list_project_jobs"
+      ],
+      "modular": {
+        "instruction_bytes": 2792,
+        "schema_bytes": 1776,
+        "instruction_estimated_tokens": 943,
+        "schema_estimated_tokens": 604,
+        "total_estimated_tokens": 1547,
+        "tools": 6
+      }
+    },
+    {
+      "message": "Create a disk without meshing.",
+      "domains": [
+        "geometry",
+        "workspace"
+      ],
+      "modules": [
+        "workspace",
+        "geometry"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 3557,
+        "schema_bytes": 3918,
+        "instruction_estimated_tokens": 1198,
+        "schema_estimated_tokens": 1318,
+        "total_estimated_tokens": 2516,
+        "tools": 9
+      }
+    },
+    {
+      "message": "Report active geometry job status.",
+      "domains": [
+        "workspace"
+      ],
+      "modules": [
+        "workspace"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 2792,
+        "schema_bytes": 1776,
+        "instruction_estimated_tokens": 943,
+        "schema_estimated_tokens": 604,
+        "total_estimated_tokens": 1547,
+        "tools": 6
+      }
+    },
+    {
+      "message": "Check mesh job status.",
+      "domains": [
+        "workspace"
+      ],
+      "modules": [
+        "workspace"
+      ],
+      "fallback": false,
+      "exact_domain_match": true,
+      "missing_required_tools": [],
+      "baseline_missing_required_tools": [],
+      "modular": {
+        "instruction_bytes": 2792,
+        "schema_bytes": 1776,
+        "instruction_estimated_tokens": 943,
+        "schema_estimated_tokens": 604,
+        "total_estimated_tokens": 1547,
+        "tools": 6
+      }
+    }
+  ],
+  "live": {
+    "model": "spark-x2.6-4b",
+    "endpoint": "http://127.0.0.1:1235/v1",
+    "temperature": 0,
+    "max_output_tokens": 768,
+    "method": "Local provider, fresh isolated project/chat per case/mode, same verified square/mesh and STEP; full MAF tool loop, then worker verification. No automated reroutes/retries. Small mixed workload; no p95 reported below 30 requests per mode.",
+    "results": [
+      {
+        "workload": "geometry",
+        "repeat": 0,
+        "mode": "modular",
+        "error": null,
+        "setup_ms": 22.97679998446256,
+        "request_ms": 5067.6592999952845,
+        "usage": {
+          "input_token_count": 3524,
+          "total_token_count": 3704,
+          "completion/reasoning_tokens": 54,
+          "reasoning_output_token_count": 54,
+          "output_token_count": 180
+        },
+        "estimated_input_tokens": 2562,
+        "tools_invoked": [
+          "create_geometry"
+        ],
+        "expected_tools_observed": true,
+        "expected_jobs": 1,
+        "actual_jobs": 1,
+        "completed_jobs": 1,
+        "job_errors": [],
+        "job_count_correct": true,
+        "duplicate_submissions": 0
+      },
+      {
+        "workload": "geometry",
+        "repeat": 0,
+        "mode": "monolithic",
+        "error": null,
+        "setup_ms": 29.33460002532229,
+        "request_ms": 7279.036200023256,
+        "usage": {
+          "input_token_count": 9065,
+          "total_token_count": 9339,
+          "completion/reasoning_tokens": 117,
+          "reasoning_output_token_count": 117,
+          "output_token_count": 274
+        },
+        "estimated_input_tokens": 6443,
+        "tools_invoked": [
+          "create_geometry"
+        ],
+        "expected_tools_observed": true,
+        "expected_jobs": 1,
+        "actual_jobs": 1,
+        "completed_jobs": 1,
+        "job_errors": [],
+        "job_count_correct": true,
+        "duplicate_submissions": 0
+      },
+      {
+        "workload": "meshing",
+        "repeat": 0,
+        "mode": "monolithic",
+        "error": null,
+        "setup_ms": 36.101600038819015,
+        "request_ms": 24732.879200018942,
+        "usage": {
+          "input_token_count": 19575,
+          "total_token_count": 20536,
+          "completion/reasoning_tokens": 727,
+          "reasoning_output_token_count": 727,
+          "output_token_count": 961
+        },
+        "estimated_input_tokens": 6461,
+        "tools_invoked": [
+          "get_active_geometry",
+          "get_active_mesh_info",
+          "generate_mesh"
+        ],
+        "expected_tools_observed": true,
+        "expected_jobs": 1,
+        "actual_jobs": 1,
+        "completed_jobs": 1,
+        "job_errors": [],
+        "job_count_correct": true,
+        "duplicate_submissions": 0
+      },
+      {
+        "workload": "meshing",
+        "repeat": 0,
+        "mode": "modular",
+        "error": null,
+        "setup_ms": 29.474299983121455,
+        "request_ms": 15415.818199981004,
+        "usage": {
+          "input_token_count": 6142,
+          "total_token_count": 6731,
+          "reasoning_output_token_count": 358,
+          "completion/reasoning_tokens": 358,
+          "output_token_count": 589
+        },
+        "estimated_input_tokens": 2945,
+        "tools_invoked": [
+          "get_active_geometry",
+          "generate_mesh"
+        ],
+        "expected_tools_observed": true,
+        "expected_jobs": 1,
+        "actual_jobs": 1,
+        "completed_jobs": 1,
+        "job_errors": [],
+        "job_count_correct": true,
+        "duplicate_submissions": 0
+      },
+      {
+        "workload": "inspection",
+        "repeat": 0,
+        "mode": "modular",
+        "error": null,
+        "setup_ms": 20.65219997894019,
+        "request_ms": 6137.233199959155,
+        "usage": {
+          "input_token_count": 3198,
+          "total_token_count": 3431,
+          "completion/reasoning_tokens": 70,
+          "reasoning_output_token_count": 70,
+          "output_token_count": 233
+        },
+        "estimated_input_tokens": 2048,
+        "tools_invoked": [
+          "inspect_uploaded_file"
+        ],
+        "expected_tools_observed": true,
+        "expected_jobs": 0,
+        "actual_jobs": 0,
+        "completed_jobs": 0,
+        "job_errors": [],
+        "job_count_correct": true,
+        "duplicate_submissions": 0
+      },
+      {
+        "workload": "inspection",
+        "repeat": 0,
+        "mode": "monolithic",
+        "error": null,
+        "setup_ms": 28.602999984286726,
+        "request_ms": 6817.4725999706425,
+        "usage": {
+          "input_token_count": 9595,
+          "total_token_count": 9858,
+          "completion/reasoning_tokens": 45,
+          "reasoning_output_token_count": 45,
+          "output_token_count": 263
+        },
+        "estimated_input_tokens": 6521,
+        "tools_invoked": [
+          "inspect_uploaded_file"
+        ],
+        "expected_tools_observed": true,
+        "expected_jobs": 0,
+        "actual_jobs": 0,
+        "completed_jobs": 0,
+        "job_errors": [],
+        "job_count_correct": true,
+        "duplicate_submissions": 0
+      },
+      {
+        "workload": "confirmation",
+        "repeat": 0,
+        "mode": "monolithic",
+        "error": null,
+        "setup_ms": 26.49110002676025,
+        "request_ms": 10621.094300004188,
+        "usage": {
+          "input_token_count": 9098,
+          "total_token_count": 9531,
+          "completion/reasoning_tokens": 277,
+          "reasoning_output_token_count": 277,
+          "output_token_count": 433
+        },
+        "estimated_input_tokens": 6457,
+        "tools_invoked": [
+          "confirm_remesh"
+        ],
+        "expected_tools_observed": true,
+        "expected_jobs": 1,
+        "actual_jobs": 1,
+        "completed_jobs": 1,
+        "job_errors": [],
+        "job_count_correct": true,
+        "duplicate_submissions": 0
+      },
+      {
+        "workload": "confirmation",
+        "repeat": 0,
+        "mode": "modular",
+        "error": null,
+        "setup_ms": 27.80670003267005,
+        "request_ms": 7265.907699998934,
+        "usage": {
+          "input_token_count": 3937,
+          "total_token_count": 4211,
+          "completion/reasoning_tokens": 186,
+          "reasoning_output_token_count": 186,
+          "output_token_count": 274
+        },
+        "estimated_input_tokens": 2941,
+        "tools_invoked": [
+          "confirm_remesh"
+        ],
+        "expected_tools_observed": true,
+        "expected_jobs": 1,
+        "actual_jobs": 1,
+        "completed_jobs": 1,
+        "job_errors": [],
+        "job_count_correct": true,
+        "duplicate_submissions": 0
+      },
+      {
+        "workload": "mixed",
+        "repeat": 0,
+        "mode": "modular",
+        "error": null,
+        "setup_ms": 127.7000000118278,
+        "request_ms": 11448.263500002213,
+        "usage": {
+          "input_token_count": 7109,
+          "total_token_count": 7488,
+          "completion/reasoning_tokens": 151,
+          "reasoning_output_token_count": 151,
+          "output_token_count": 379
+        },
+        "estimated_input_tokens": 5028,
+        "tools_invoked": [
+          "create_geometry_and_mesh"
+        ],
+        "expected_tools_observed": true,
+        "expected_jobs": 2,
+        "actual_jobs": 2,
+        "completed_jobs": 2,
+        "job_errors": [],
+        "job_count_correct": true,
+        "duplicate_submissions": 0
+      },
+      {
+        "workload": "mixed",
+        "repeat": 0,
+        "mode": "monolithic",
+        "error": null,
+        "setup_ms": 71.44039997365326,
+        "request_ms": 9245.900899986736,
+        "usage": {
+          "input_token_count": 9338,
+          "total_token_count": 9696,
+          "completion/reasoning_tokens": 114,
+          "reasoning_output_token_count": 114,
+          "output_token_count": 358
+        },
+        "estimated_input_tokens": 6466,
+        "tools_invoked": [
+          "create_geometry_and_mesh"
+        ],
+        "expected_tools_observed": true,
+        "expected_jobs": 2,
+        "actual_jobs": 2,
+        "completed_jobs": 2,
+        "job_errors": [],
+        "job_count_correct": true,
+        "duplicate_submissions": 0
+      },
+      {
+        "workload": "negative",
+        "repeat": 0,
+        "mode": "monolithic",
+        "error": null,
+        "setup_ms": 26.493199984543025,
+        "request_ms": 11202.390299993567,
+        "usage": {
+          "input_token_count": 14000,
+          "total_token_count": 14434,
+          "reasoning_output_token_count": 133,
+          "completion/reasoning_tokens": 133,
+          "output_token_count": 434
+        },
+        "estimated_input_tokens": 6460,
+        "tools_invoked": [
+          "get_active_geometry",
+          "get_job_status"
+        ],
+        "expected_tools_observed": true,
+        "expected_jobs": 0,
+        "actual_jobs": 0,
+        "completed_jobs": 0,
+        "job_errors": [],
+        "job_count_correct": true,
+        "duplicate_submissions": 0
+      },
+      {
+        "workload": "negative",
+        "repeat": 0,
+        "mode": "modular",
+        "error": null,
+        "setup_ms": 24.56220000749454,
+        "request_ms": 9634.849300025962,
+        "usage": {
+          "input_token_count": 2444,
+          "total_token_count": 2820,
+          "completion/reasoning_tokens": 90,
+          "reasoning_output_token_count": 90,
+          "output_token_count": 376
+        },
+        "estimated_input_tokens": 1610,
+        "tools_invoked": [
+          "get_job_status"
+        ],
+        "expected_tools_observed": false,
+        "expected_jobs": 0,
+        "actual_jobs": 0,
+        "completed_jobs": 0,
+        "job_errors": [],
+        "job_count_correct": true,
+        "duplicate_submissions": 0
+      }
+    ],
+    "latency": {
+      "monolithic": {
+        "samples": 6,
+        "median_ms": 9933.497599995462
+      },
+      "modular": {
+        "samples": 6,
+        "median_ms": 8450.378500012448
+      }
+    }
+  }
+}

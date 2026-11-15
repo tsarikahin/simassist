@@ -62,6 +62,49 @@ def test_upload_metadata_original_bytes_and_ownership(upload_api):
     assert store.open_default_project()["id"] != str(project)
 
 
+def test_modular_upload_workflow_and_chat_attachment_followup(upload_api):
+    from simassist.agents.context import resolve_context
+    from simassist.agents.orchestrator import compose
+    from simassist.agents.tools.geometry import GeometryTools
+    from simassist.agents.tools.simulation_tools import SimulationTools
+    from simassist.jobs.manager import JobManager
+    from simassist.projects.context import ProjectContextRepository
+    from simassist.workers.runner import SimulationWorker
+
+    client, store, project, _, data, root = upload_api
+    item = upload(client, project, data).json()
+    chat = UUID(store.new_chat(project)["id"])
+    worker = SimulationWorker(root)
+    manager = JobManager(worker.repository)
+    context = ProjectContextRepository(root / "jobs.db", worker.repository)
+    services = SimulationTools(GeometryTools(manager, project), context, chat)
+    turn = uuid4()
+    store.begin_turn(
+        project, chat, turn, "Inspect the attached CAD", [UUID(item["file_id"])]
+    )
+    store.finish_turn(turn, "completed", "Ready for meshing", [])
+    snapshot = resolve_context(project, chat, store, context, [])
+    selected = compose("Mesh it", snapshot, services)
+    tools = {fn.__name__: fn for fn in selected.tools}
+    assert "cad_meshing" in selected.modules
+    result = json.loads(
+        tools["mesh_uploaded_geometry"](item["file_id"], 0.3, 0.8, "mm", "tetrahedral")
+    )
+    assert result["ok"]
+    replay = json.loads(
+        tools["mesh_uploaded_geometry"](item["file_id"], 0.3, 0.8, "mm", "tetrahedral")
+    )
+    assert replay == result
+    assert len(manager.list_by_project(project)) == 2
+    while worker.process_next():
+        pass
+    jobs = manager.list_by_project(project)
+    assert all(job.status == "completed" for job in jobs)
+    mesh = next(job for job in jobs if job.type == "mesh.generate")
+    geometry = next(job for job in jobs if job.type == "geometry.create")
+    assert mesh.depends_on == geometry.id
+
+
 def test_upload_rejections_do_not_leave_records_or_partial_files(
     upload_api, monkeypatch
 ):
@@ -218,8 +261,11 @@ def test_attachment_references_through_sync_and_stream_chat(upload_api, monkeypa
     app = client.app
     app.include_router(chat_routes.router)
     app.dependency_overrides[get_job_manager] = lambda: None
-    app.dependency_overrides[get_project_context_repository] = lambda: SimpleNamespace(
-        db_path=root / "jobs.db"
+    from simassist.jobs.repository import JobRepository
+    from simassist.projects.context import ProjectContextRepository
+
+    app.dependency_overrides[get_project_context_repository] = lambda: (
+        ProjectContextRepository(root / "jobs.db", JobRepository(root / "jobs.db"))
     )
     monkeypatch.setattr(chat_routes, "_workspace", lambda: store)
     agents = []

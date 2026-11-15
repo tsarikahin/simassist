@@ -58,21 +58,25 @@ def api(tmp_path, monkeypatch):
     chat = UUID(store.new_chat(project)["id"])
     agents = []
     monkeypatch.setattr(routes, "_workspace", lambda: store)
-    monkeypatch.setattr(
-        routes, "_simulation_tools", lambda *args: SimpleNamespace(submitted_job_ids=[])
-    )
-    monkeypatch.setattr(routes, "simulation_agent_tools", lambda _: [])
+    from simassist.jobs.manager import JobManager
+    from simassist.jobs.repository import JobRepository
+    from simassist.projects.context import ProjectContextRepository
+
+    repository = JobRepository(tmp_path / "jobs.db")
+    manager = JobManager(repository)
+    context = ProjectContextRepository(tmp_path / "jobs.db", repository)
 
     def build(**kwargs):
         agent = FakeAgent(kwargs["simulation_tools"])
+        agent.composition = kwargs["composition"]
         agents.append(agent)
         return agent
 
     monkeypatch.setattr(routes, "build_simulation_agent", build)
     app = FastAPI()
     app.include_router(routes.router)
-    app.dependency_overrides[get_job_manager] = lambda: None
-    app.dependency_overrides[get_project_context_repository] = lambda: None
+    app.dependency_overrides[get_job_manager] = lambda: manager
+    app.dependency_overrides[get_project_context_repository] = lambda: context
     with TestClient(app) as client:
         yield client, store, project, chat, agents
 
@@ -110,6 +114,27 @@ def test_sync_sse_persistence_replay_and_roles(api):
         == 409
     )
     assert client.post("/api/chat", json=body(uuid4(), chat)).status_code == 404
+
+
+@pytest.mark.parametrize("endpoint", ["/api/chat", "/api/chat/stream"])
+def test_request_selected_tools_and_private_routing_logs(api, endpoint, caplog):
+    client, _, project, chat, agents = api
+    with caplog.at_level("INFO"):
+        response = client.post(
+            endpoint, json=body(project, chat, "Create a disk private_marker_1118b5")
+        )
+    assert response.status_code == 200
+    composition = agents[-1].composition
+    assert composition.modules == ("workspace", "geometry")
+    assert "generate_mesh" not in {fn.__name__ for fn in composition.tools}
+    assert "agent_composition" in caplog.text
+    assert "agent_completion" in caplog.text
+    assert "private_marker_1118b5" not in caplog.text
+    assert "explicit_geometry" not in response.text
+    assert (
+        composition.estimates["total_input_tokens"]
+        > composition.estimates["schema_tokens"]
+    )
 
 
 def test_failed_stream_after_submission_is_not_completed(api, monkeypatch):

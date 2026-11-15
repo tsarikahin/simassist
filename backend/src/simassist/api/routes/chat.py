@@ -5,18 +5,16 @@ import json
 import logging
 import os
 from collections.abc import AsyncIterator
+from time import perf_counter
 from uuid import UUID, uuid4
 
-from agent_framework import tool
 from fastapi import APIRouter, HTTPException
 from fastapi.responses import StreamingResponse
 from pydantic import BaseModel, Field, field_validator
 
-from simassist.agents.simulation_agent import (
-    SIMULATION_AGENT_INSTRUCTIONS,
-    build_simulation_agent,
-    simulation_agent_tools,
-)
+from simassist.agents.context import resolve_context
+from simassist.agents.orchestrator import compose
+from simassist.agents.simulation_agent import build_simulation_agent
 from simassist.agents.tools.geometry import GeometryTools
 from simassist.agents.tools.simulation_tools import SimulationTools
 from simassist.api.dependencies import JobManagerDep, ProjectContextDep, get_data_root
@@ -79,6 +77,8 @@ class ChatExecution:
     """Shared sync/SSE lifecycle. Never replay raw tool traces or failed turns."""
 
     def __init__(self, request, manager, context):
+        self.started = perf_counter()
+        self.composition = None
         self.request = request
         self.store = _workspace()
         self.tools = _simulation_tools(request, manager, context)
@@ -117,16 +117,16 @@ class ChatExecution:
                 return
             service = ConversationContextService(self.store)
             self.budget = service.budget
-            schemas = [
-                tool(fn).to_json_schema_spec()
-                for fn in simulation_agent_tools(self.tools)
-            ]
+            snapshot = resolve_context(
+                request.project_id, request.chat_id, self.store, context, attachments
+            )
+            self.composition = compose(request.message, snapshot, self.tools)
             assembled = service.build(
                 request.project_id,
                 request.chat_id,
                 current,
-                SIMULATION_AGENT_INSTRUCTIONS,
-                schemas,
+                self.composition.instructions,
+                self.composition.schemas,
             )
             self.messages = assembled.messages
             config = _llm_config()
@@ -145,7 +145,32 @@ class ChatExecution:
                 assembled.summary_status,
             )
             self.agent = build_simulation_agent(
-                config=config, simulation_tools=self.tools
+                config=config, simulation_tools=self.tools, composition=self.composition
+            )
+            self.composition.estimates["conversation_tokens"] = (
+                assembled.tokens
+                - self.composition.estimates["instruction_tokens"]
+                - self.composition.estimates["schema_tokens"]
+            )
+            self.composition.estimates["total_input_tokens"] = assembled.tokens
+            logger.info(
+                "agent_composition %s",
+                json.dumps(
+                    {
+                        "project_id": str(request.project_id),
+                        "chat_id": str(request.chat_id),
+                        "request_id": str(request.request_id),
+                        "modules": self.composition.modules,
+                        "reasons": self.composition.routing.reasons,
+                        "fallback": self.composition.routing.fallback,
+                        "tools_available": [
+                            fn.__name__ for fn in self.composition.tools
+                        ],
+                        "estimated_tokens": self.composition.estimates,
+                        "routing_composition_ms": self.composition.setup_ms,
+                        "setup_ms": (perf_counter() - self.started) * 1000,
+                    }
+                ),
             )
         except KeyError as exc:
             self.finish("failed")
@@ -170,7 +195,7 @@ class ChatExecution:
             submitted_job_ids=json.loads(self.cached["job_ids"]),
         )
 
-    def finish(self, status, text=None):
+    def finish(self, status, text=None, usage=None):
         if self.finished:
             return
         if self.accepted:
@@ -178,6 +203,24 @@ class ChatExecution:
                 self.request.request_id, status, text, self.tools.submitted_job_ids
             )
         self.finished = True
+        if self.composition:
+            logger.info(
+                "agent_completion %s",
+                json.dumps(
+                    {
+                        "project_id": str(self.request.project_id),
+                        "chat_id": str(self.request.chat_id),
+                        "request_id": str(self.request.request_id),
+                        "status": status,
+                        "modules": self.composition.modules,
+                        "tools_invoked": self.composition.invoked,
+                        "route_misses": self.composition.route_misses,
+                        "automatic_retries": 0,
+                        "completion_ms": (perf_counter() - self.started) * 1000,
+                        "provider_usage": dict(usage) if usage else None,
+                    }
+                ),
+            )
         logger.info(
             "chat_turn project=%s chat=%s request=%s status=%s submitted_jobs=%s",
             self.request.project_id,
@@ -207,7 +250,9 @@ async def chat(
         response = await execution.agent.run(
             execution.messages, options=execution.options
         )
-        execution.finish("completed", response.text or "")
+        execution.finish(
+            "completed", response.text or "", getattr(response, "usage_details", None)
+        )
         return ChatResponse(
             message=response.text or "",
             submitted_job_ids=execution.tools.submitted_job_ids,
@@ -263,7 +308,9 @@ async def stream_chat(
                     reported_jobs.update(new_jobs)
                     yield sse_event("jobs", {"job_ids": new_jobs})
             final = await stream.get_final_response()
-            execution.finish("completed", final.text or "")
+            execution.finish(
+                "completed", final.text or "", getattr(final, "usage_details", None)
+            )
             remaining = [
                 j for j in execution.tools.submitted_job_ids if j not in reported_jobs
             ]

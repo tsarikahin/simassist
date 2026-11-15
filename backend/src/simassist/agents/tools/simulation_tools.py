@@ -2,6 +2,7 @@ from __future__ import annotations
 
 import json
 import math
+from pathlib import Path
 from typing import Any, Literal
 from uuid import UUID
 
@@ -177,6 +178,15 @@ class SimulationTools:
             return self._error("The active geometry job is unavailable")
         if status.get("status") != "completed":
             return self._error("The active geometry job is not completed")
+        if self._is_hidden_geometry(context.active_geometry_job_id):
+            return self._error(
+                "The selected geometry was deleted; select another geometry"
+            )
+        artifact_id = (status.get("result") or {}).get("artifact_id")
+        if str(artifact_id) != str(context.active_geometry_artifact_id):
+            return self._error(
+                "The active geometry revision is unavailable; select it again"
+            )
 
         return json.dumps(
             {
@@ -186,6 +196,17 @@ class SimulationTools:
                 "status": status["status"],
             }
         )
+
+    def _is_hidden_geometry(self, geometry_job_id: str | UUID) -> bool:
+        from simassist.projects.workspace import WorkspaceRepository
+
+        db_path = getattr(self.project_context, "db_path", None)
+        if not isinstance(db_path, (str, Path)):
+            return False
+        overrides = WorkspaceRepository(Path(db_path)).geometry_overrides(
+            self.geometry.project_id
+        )
+        return bool(overrides.get(str(geometry_job_id), {}).get("deleted", 0))
 
     def create_geometry(
         self,
@@ -259,6 +280,9 @@ class SimulationTools:
             UUID(geometry_job_id)
         except (ValueError, TypeError):
             return self._error("Invalid geometry job ID")
+
+        if self._is_hidden_geometry(geometry_job_id):
+            return self._error("The requested geometry was deleted; no mesh submitted")
 
         geometry_status = self.geometry.get_job_status(geometry_job_id)
         if not geometry_status.get("ok"):
@@ -832,6 +856,23 @@ class SimulationTools:
             job_id: Job ID to inspect.
         """
         return json.dumps(self.geometry.get_job_status(job_id))
+
+    def list_project_jobs(self) -> str:
+        """Read current project job IDs, types and statuses without submitting work."""
+        jobs = self.geometry.job_manager.list_by_project(self.geometry.project_id)
+        return json.dumps(
+            {
+                "ok": True,
+                "jobs": [
+                    {
+                        "job_id": str(job.id),
+                        "job_type": job.type.value,
+                        "status": job.status.value,
+                    }
+                    for job in jobs
+                ],
+            }
+        )
 
     def _uploaded_files(self):
         from pathlib import Path
