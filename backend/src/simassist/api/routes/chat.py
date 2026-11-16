@@ -27,6 +27,23 @@ logger = logging.getLogger(__name__)
 router = APIRouter(prefix="/api", tags=["Chat"])
 
 
+class ChatModelsResponse(BaseModel):
+    models: list[str]
+    default_model: str
+
+
+@router.get("/chat/models", response_model=ChatModelsResponse)
+def chat_models() -> ChatModelsResponse:
+    default = os.getenv("SIMASSIST_MODEL", "").strip() or "spark-x2.6-4b"
+    configured = os.getenv("SIMASSIST_CHAT_MODELS", "qwen3.5-4b,spark-x2.6-4b")
+    models = list(
+        dict.fromkeys(item.strip() for item in configured.split(",") if item.strip())
+    )
+    if default not in models:
+        models.append(default)
+    return ChatModelsResponse(models=models, default_model=default)
+
+
 class AttachmentReference(BaseModel):
     file_id: UUID
 
@@ -36,7 +53,15 @@ class ChatRequest(BaseModel):
     chat_id: UUID | None = None
     request_id: UUID = Field(default_factory=uuid4)
     message: str = Field(min_length=1, max_length=10000)
+    model: str | None = None
     attachments: list[AttachmentReference] = Field(default_factory=list)
+
+    @field_validator("model")
+    @classmethod
+    def validate_model(cls, value: str | None) -> str | None:
+        if value is not None and value not in chat_models().models:
+            raise ValueError("Unknown chat model")
+        return value
 
     @field_validator("attachments")
     @classmethod
@@ -57,10 +82,10 @@ def _workspace() -> WorkspaceRepository:
     return WorkspaceRepository(get_data_root() / "jobs.db")
 
 
-def _llm_config() -> LLMConfig:
+def _llm_config(model: str | None = None) -> LLMConfig:
     return LLMConfig(
         provider="lm_studio",
-        model=os.getenv("SIMASSIST_MODEL", "spark-x2.6-4b"),
+        model=model or chat_models().default_model,
         endpoint=os.getenv("SIMASSIST_LLM_ENDPOINT", "http://127.0.0.1:1235/v1"),
     )
 
@@ -129,7 +154,7 @@ class ChatExecution:
                 self.composition.schemas,
             )
             self.messages = assembled.messages
-            config = _llm_config()
+            config = _llm_config(request.model)
             logger.info(
                 "chat_context project=%s chat=%s request=%s provider=%s model=%s "
                 "turns=%s watermark=%s estimated_tokens=%s budget=%s summary=%s",

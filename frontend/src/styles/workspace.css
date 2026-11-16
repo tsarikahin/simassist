@@ -19,6 +19,26 @@ textarea {
   font: inherit;
 }
 
+/* Keep project and model choices readable, including the open picker. */
+.workspace-select { color-scheme:dark; }
+.workspace-select option { background:#1d293b; color:#fff; }
+.workspace-select option:is(:checked, :hover, :focus-visible, :active) { background:#c2410c; color:#fff; }
+
+@supports (appearance:base-select) {
+  .workspace-select,
+  .workspace-select::picker(select) { appearance:base-select; }
+  .workspace-select::picker(select) {
+    background:#1d293b;
+    color:#fff;
+    border:1px solid #475569;
+    border-radius:6px;
+    padding:4px;
+    box-shadow:0 8px 24px #0006;
+  }
+  .workspace-select option { padding:7px 10px; border-radius:3px; cursor:pointer; }
+  .workspace-select option::checkmark { color:#fff; }
+}
+
 .app-shell {
   height: 100vh;
   display: flex;
@@ -934,6 +954,13 @@ body,
 /* Project-owned chat attachments */
 .chat-composer { flex-shrink:0; min-width:0; border-top:1px solid #293244; }
 .chat-composer .chat-input-area { border-top:0; }
+.chat-model-toolbar { display:flex; flex-wrap:wrap; align-items:center; gap:8px; padding:10px 12px 0; }
+.chat-model-picker { display:flex; align-items:center; gap:8px; min-width:0; color:#94a3b8; font-size:12px; }
+.chat-model-picker select { min-width:0; max-width:100%; padding:5px 8px; border:1px solid #344155; border-radius:6px; background:#1d293b; color:#e2e8f0; font:inherit; cursor:pointer; }
+.chat-model-picker select:focus-visible { outline:2px solid #60a5fa; outline-offset:2px; }
+.chat-model-picker select:disabled { opacity:.5; cursor:default; }
+.chat-model-error { color:#fca5a5; font-size:12px; }
+.chat-model-error button { color:inherit; background:transparent; border:0; text-decoration:underline; cursor:pointer; }
 .chat-input-field { position:relative; display:flex; flex:1; min-width:0; background:#1d293b; border:1px solid #344155; border-radius:8px; }
 .chat-input-field:focus-within { border-color:#60a5fa; }
 .chat-input-area .chat-input-field textarea { width:100%; padding-right:42px; border:0; background:transparent; outline:none; }

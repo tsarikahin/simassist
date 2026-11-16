@@ -7,7 +7,19 @@ export interface ChatRequest {
   chat_id?: string;
   request_id?: string;
   message: string;
+  model?: string;
   attachments?: { file_id: string }[];
+}
+
+export interface ChatModels {
+  models: string[];
+  default_model: string;
+}
+
+export async function getChatModels(): Promise<ChatModels> {
+  const response = await fetch(`${API_URL}/api/chat/models`);
+  if (!response.ok) throw new Error("Could not load chat models");
+  return (await response.json()) as ChatModels;
 }
 
 export interface ChatResponse {

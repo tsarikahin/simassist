@@ -71,6 +71,7 @@ def api(tmp_path, monkeypatch):
 
     def build(**kwargs):
         agent = FakeAgent(kwargs["simulation_tools"])
+        agent.config = kwargs["config"]
         agent.composition = kwargs["composition"]
         agents.append(agent)
         return agent
@@ -91,6 +92,42 @@ def body(project, chat, message="hello"):
         "message": message,
         "request_id": str(uuid4()),
     }
+
+
+def test_chat_model_catalog_configuration(api, monkeypatch):
+    client, *_ = api
+    monkeypatch.delenv("SIMASSIST_MODEL", raising=False)
+    monkeypatch.delenv("SIMASSIST_CHAT_MODELS", raising=False)
+    assert client.get("/api/chat/models").json() == {
+        "models": ["qwen3.5-4b", "spark-x2.6-4b"],
+        "default_model": "spark-x2.6-4b",
+    }
+    monkeypatch.setenv("SIMASSIST_CHAT_MODELS", " custom-a, custom-b,custom-a, ,")
+    monkeypatch.setenv("SIMASSIST_MODEL", "custom-default")
+    assert client.get("/api/chat/models").json() == {
+        "models": ["custom-a", "custom-b", "custom-default"],
+        "default_model": "custom-default",
+    }
+
+
+@pytest.mark.parametrize("endpoint", ["/api/chat", "/api/chat/stream"])
+def test_chat_model_selection_is_per_request(api, monkeypatch, endpoint):
+    client, store, project, chat, agents = api
+    monkeypatch.setenv("SIMASSIST_MODEL", "spark-x2.6-4b")
+    monkeypatch.setenv("SIMASSIST_CHAT_MODELS", "qwen3.5-4b,spark-x2.6-4b")
+    for model in ("qwen3.5-4b", "spark-x2.6-4b", None):
+        request = body(project, chat)
+        if model:
+            request["model"] = model
+        assert client.post(endpoint, json=request).status_code == 200
+        assert agents[-1].config.model == (model or "spark-x2.6-4b")
+    # Switching models keeps the conversation history available.
+    assert len(agents[-1].inputs[0]) == 5
+    before = store.messages(project, chat)
+    rejected = client.post(endpoint, json={**body(project, chat), "model": "unknown"})
+    assert rejected.status_code == 422
+    assert len(agents) == 3
+    assert store.messages(project, chat) == before
 
 
 def test_sync_sse_persistence_replay_and_roles(api):

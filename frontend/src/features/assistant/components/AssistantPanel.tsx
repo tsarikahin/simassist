@@ -3,7 +3,7 @@ import { Bot, Send, User, Plus, Pencil, Trash2, Paperclip, X } from "lucide-reac
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
 import { uploadProjectFile, type FileAttachment, type UploadedFile } from "../../../services/files";
-import { streamChatMessage } from "../../../services/chat";
+import { getChatModels, streamChatMessage } from "../../../services/chat";
 import {
   createChat, deleteChat, getMessages, listChats, renameChat,
   type WorkspaceChat, type StoredMessage,
@@ -30,6 +30,10 @@ export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelPro
   const [status, setStatus] = useState<string | null>(null);
   const [error, setError] = useState<string | null>(null);
   const [attachments, setAttachments] = useState<PendingAttachment[]>([]);
+  const [models, setModels] = useState<string[]>([]);
+  const [model, setModel] = useState("");
+  const [modelError, setModelError] = useState<string | null>(null);
+  const [modelsReload, setModelsReload] = useState(0);
   const uploadControllers = useRef(new Map<string, AbortController>());
   const filePicker = useRef<HTMLInputElement>(null);
   const uploading = attachments.some(item => !item.uploaded && !item.error);
@@ -39,6 +43,25 @@ export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelPro
   const controller = useRef<AbortController | null>(null);
   const bottom = useRef<HTMLDivElement>(null);
   const textarea = useRef<HTMLTextAreaElement>(null);
+
+  useEffect(() => {
+    let live = true;
+    void getChatModels().then(result => {
+      if (!live) return;
+      let saved: string | null = null;
+      try { saved = localStorage.getItem("simassist.chat.model"); } catch { /* Storage may be unavailable. */ }
+      setModels(result.models);
+      setModel(saved && result.models.includes(saved) ? saved : result.default_model);
+    }).catch(err => {
+      if (live) setModelError(err instanceof Error ? err.message : String(err));
+    });
+    return () => { live = false; };
+  }, [modelsReload]);
+
+  function selectModel(value: string) {
+    setModel(value);
+    try { localStorage.setItem("simassist.chat.model", value); } catch { /* Keep the selection in memory. */ }
+  }
 
   useEffect(() => {
     const controllers = uploadControllers.current;
@@ -145,7 +168,7 @@ export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelPro
 
   async function sendMessage() {
     const content = input.trim();
-    if (!content || !chatId || sending.current || uploading || attachmentErrors) return;
+    if (!content || !chatId || !model || sending.current || uploading || attachmentErrors) return;
     const sentAttachments = attachments.flatMap(item => item.uploaded ? [item.uploaded] : []);
     setAttachments([]);
     sending.current = true;
@@ -163,7 +186,7 @@ export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelPro
       if (fresh.length) onJobsSubmitted(fresh);
     };
     try {
-      await streamChatMessage({project_id:projectId,chat_id:activeChat,message:content,attachments:sentAttachments.map(item => ({file_id:item.file_id}))},{
+      await streamChatMessage({project_id:projectId,chat_id:activeChat,message:content,model,attachments:sentAttachments.map(item => ({file_id:item.file_id}))},{
         onStatus: setStatus,
         onDelta(text) {
           setStatus(null);
@@ -214,6 +237,16 @@ export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelPro
     <div className="chat-composer" onDragOver={event => {
       if (event.dataTransfer.types.includes("Files")) event.preventDefault();
     }} onDrop={event => {event.preventDefault(); attachFiles(event.dataTransfer.files);}}>
+      <div className="chat-model-toolbar">
+        <label className="chat-model-picker">
+          <span>Model</span>
+          <select className="workspace-select" aria-label="Chat model" value={model} disabled={loading || !models.length} onChange={event => selectModel(event.target.value)}>
+            {!models.length && <option value="">{modelError ? "Models unavailable" : "Loading models..."}</option>}
+            {models.map(item => <option key={item} value={item}>{item}</option>)}
+          </select>
+        </label>
+        {modelError && <span className="chat-model-error" role="alert">{modelError}. <button type="button" onClick={() => { setModelError(null); setModelsReload(value => value + 1); }}>Retry</button></span>}
+      </div>
       <input ref={filePicker} type="file" accept=".step,.stp" multiple hidden onChange={event => {
         attachFiles(event.target.files); event.target.value = "";
       }}/>
@@ -233,7 +266,7 @@ export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelPro
         onKeyDown={event => {if(event.key==="Enter"&&!event.shiftKey&&!event.nativeEvent.isComposing){event.preventDefault();void sendMessage();}}}/>
       <button className="chat-attach-button" type="button" title="Attach file" aria-label="Attach file" disabled={loading || !chatId} onClick={() => filePicker.current?.click()}><Paperclip size={17}/></button>
       </div>
-      <button type="button" disabled={loading||uploading||attachmentErrors||!chatId||!input.trim()} onClick={()=>void sendMessage()} aria-label="Send message"><Send size={18}/></button>
+      <button type="button" disabled={loading||uploading||attachmentErrors||!chatId||!model||!input.trim()} onClick={()=>void sendMessage()} aria-label="Send message"><Send size={18}/></button>
     </div>
     </div>
   </div>;

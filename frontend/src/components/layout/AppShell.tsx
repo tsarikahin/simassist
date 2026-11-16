@@ -641,7 +641,7 @@ export function AppShell() {
           </div>
 
           <div className="workspace-project-switcher">
-            <select aria-label="Select project" disabled={projectBusy} value={projectId} onChange={event => switchProject(event.target.value)}>
+            <select className="workspace-select" aria-label="Select project" disabled={projectBusy} value={projectId} onChange={event => switchProject(event.target.value)}>
               {projects.map(project => <option key={project.id} value={project.id}>{project.name} ({project.id.slice(0, 6)})</option>)}
             </select>
             <button type="button" title="Rename project" aria-label="Rename project" disabled={!projectId || projectBusy} onClick={() => {
