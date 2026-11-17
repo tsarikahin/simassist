@@ -20,7 +20,7 @@ def test_selection_api_validates_revision_ownership_and_survives_restart(
     from simassist.projects.context import ProjectContextRepository
     from simassist.workers.runner import SimulationWorker
 
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SIMASSIST_DATA_DIR", str(tmp_path / "data"))
     worker = SimulationWorker(tmp_path / "data")
     manager = JobManager(worker.repository)
     project = uuid4()
@@ -215,7 +215,7 @@ def test_legacy_preview_upgrade_preserves_original_artifacts(tmp_path, monkeypat
     from simassist.main import app
     from simassist.projects.context import ProjectContextRepository
 
-    monkeypatch.chdir(tmp_path)
+    monkeypatch.setenv("SIMASSIST_DATA_DIR", str(tmp_path / "data"))
     project = uuid4()
     store = LocalArtifactStore(tmp_path / "data/artifacts")
     geometry = GmshGeometryAdapter(tmp_path / "geometry", store, project).create(

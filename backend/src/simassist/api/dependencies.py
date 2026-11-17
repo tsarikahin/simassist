@@ -3,6 +3,7 @@ from typing import Annotated
 
 from fastapi import Depends
 
+from simassist.core.paths import resolve_data_root
 from simassist.jobs.manager import JobManager
 from simassist.jobs.repository import JobRepository
 from simassist.projects.context import ProjectContextRepository
@@ -11,7 +12,7 @@ from simassist.storage.local import LocalArtifactStore
 
 def get_data_root() -> Path:
     """Local SimAssist data directory."""
-    return Path.cwd() / "data"
+    return resolve_data_root()
 
 
 def get_artifact_store() -> LocalArtifactStore:

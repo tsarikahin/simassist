@@ -1,8 +1,10 @@
 import logging
+from contextlib import asynccontextmanager
 
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
+from simassist.api.dependencies import get_data_root
 from simassist.api.routes.artifacts import router as artifacts_router
 from simassist.api.routes.cad_faces import router as cad_faces_router
 from simassist.api.routes.chat import router as chat_router
@@ -27,10 +29,18 @@ if not logger.hasHandlers():
     handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
     logger.addHandler(handler)
 
+
+@asynccontextmanager
+async def lifespan(app: FastAPI):
+    logger.info("API runtime data root: %s", get_data_root())
+    yield
+
+
 app = FastAPI(
     title="SimAssist API",
     version="0.1.0",
     description="Local AI-powered simulation platform",
+    lifespan=lifespan,
 )
 
 app.add_middleware(

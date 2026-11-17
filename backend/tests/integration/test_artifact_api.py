@@ -10,7 +10,8 @@ from simassist.main import app
 from simassist.storage.local import LocalArtifactStore
 
 
-def test_artifact_api(tmp_path):
+def test_artifact_api(tmp_path, monkeypatch):
+    monkeypatch.setenv("SIMASSIST_DATA_DIR", str(tmp_path))
     store = LocalArtifactStore(tmp_path / "artifacts")
     project_id = uuid4()
 

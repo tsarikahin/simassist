@@ -16,6 +16,7 @@ if not root.is_relative_to(Path.cwd() / ".benchmarks"):
     parser.error("Fixture root must be within the workspace .benchmarks directory")
 root.mkdir(parents=True, exist_ok=True)
 os.chdir(root)
+os.environ["SIMASSIST_DATA_DIR"] = str(root / "data")
 
 from simassist.jobs.manager import JobManager
 from simassist.jobs.models import JobType

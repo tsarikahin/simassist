@@ -21,6 +21,7 @@ if not root.is_relative_to(repo_root / ".benchmarks"):
     parser.error("Fixture root must be inside this workspace .benchmarks directory")
 root.mkdir(parents=True, exist_ok=True)
 os.chdir(root)
+os.environ["SIMASSIST_DATA_DIR"] = str(root / "data")
 
 from simassist.core.models.artifact import ArtifactCreate, ArtifactType
 from simassist.jobs.manager import JobManager

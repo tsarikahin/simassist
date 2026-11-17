@@ -9,6 +9,7 @@ from uuid import UUID
 from simassist.core.models.artifact import ArtifactCreate, ArtifactType
 from simassist.core.models.geometry import CADImportGeometry, GeometrySpec
 from simassist.core.models.mesh import MeshRequest
+from simassist.core.paths import resolve_data_root
 from simassist.files.repository import FileRepository
 from simassist.jobs.models import Job, JobStatus, JobType
 from simassist.jobs.repository import JobRepository
@@ -27,10 +28,11 @@ class SimulationWorker:
 
     def __init__(
         self,
-        data_root: Path,
+        data_root: Path | None = None,
         poll_interval: float = 1.0,
     ) -> None:
-        self.data_root = data_root.resolve()
+        self.data_root = resolve_data_root(data_root)
+        logger.info("Worker runtime data root: %s", self.data_root)
         self.data_root.mkdir(parents=True, exist_ok=True)
 
         self.repository = JobRepository(self.data_root / "jobs.db")
@@ -227,7 +229,7 @@ def main() -> None:
     parser.add_argument(
         "--data-root",
         type=Path,
-        default=Path.cwd() / "data",
+        help="Override runtime storage (relative paths resolve from the current directory)",
     )
 
     parser.add_argument(
