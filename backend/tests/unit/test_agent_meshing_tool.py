@@ -51,6 +51,16 @@ def test_generate_mesh_from_completed_geometry():
     assert kwargs["payload"]["geometry_artifact_id"] == str(geometry_artifact_id)
     assert kwargs["payload"]["settings"]["dimension"] == 3
 
+    # Repeated model calls in one turn must return the same submission.
+    repeated = json.loads(
+        tools.generate_mesh(
+            geometry_job_id=str(geometry_job_id), dimension=3, min_size=1, max_size=5
+        )
+    )
+    assert repeated["job_id"] == response["job_id"]
+    geometry.job_manager.submit.assert_called_once()
+    assert tools.submitted_job_ids == [str(expected_job.id)]
+
 
 def test_generate_mesh_requires_completed_geometry():
     geometry = Mock()

@@ -4,6 +4,7 @@ import asyncio
 import json
 import logging
 import os
+import re
 from collections.abc import AsyncIterator
 from time import perf_counter
 from uuid import UUID, uuid4
@@ -14,12 +15,14 @@ from pydantic import BaseModel, Field, field_validator
 
 from simassist.agents.context import resolve_context
 from simassist.agents.orchestrator import compose
+from simassist.agents.remesh import explicit_mesh_request
 from simassist.agents.simulation_agent import build_simulation_agent
 from simassist.agents.tools.geometry import GeometryTools
 from simassist.agents.tools.simulation_tools import SimulationTools
 from simassist.api.dependencies import JobManagerDep, ProjectContextDep, get_data_root
 from simassist.conversations.context_service import ConversationContextService
 from simassist.files.repository import FileRepository
+from simassist.jobs.models import JobType
 from simassist.llm.config import LLMConfig
 from simassist.projects.workspace import WorkspaceRepository
 
@@ -113,6 +116,8 @@ class ChatExecution:
         self.accepted = False
         self.finished = False
         self.cached = None
+        self.mesh_request = None
+        self.mesh_result = None
         try:
             attachments = []
             if request.attachments:
@@ -148,6 +153,8 @@ class ChatExecution:
                 request.project_id, request.chat_id, self.store, context, attachments
             )
             self.composition = compose(request.message, snapshot, self.tools)
+            if not attachments:
+                self.mesh_request = explicit_mesh_request(request.message, snapshot)
             self.composition.request_id = str(request.request_id)
             assembled = service.build(
                 request.project_id,
@@ -218,13 +225,68 @@ class ChatExecution:
             raise HTTPException(502, "Simulation agent initialization failed") from exc
 
     def result(self):
+        self.tools.submitted_job_ids = json.loads(self.cached["job_ids"])
+        text = self.cached["response"]
+        # Preserve backend clarification on replay while checking legacy success claims.
+        if not self.tools.submitted_job_ids and "No jobs were submitted" in text:
+            return ChatResponse(message=text)
         return ChatResponse(
-            message=self.cached["response"],
-            submitted_job_ids=json.loads(self.cached["job_ids"]),
+            message=self.response_text(text),
+            submitted_job_ids=self.tools.submitted_job_ids,
         )
 
     def response_text(self, response):
-        text = response.text or ""
+        text = (
+            response
+            if isinstance(response, str)
+            else getattr(response, "text", "") or ""
+        )
+        jobs = []
+        for job_id in self.tools.submitted_job_ids:
+            job = self.tools.geometry.job_manager.get(UUID(job_id))
+            if job.project_id != self.request.project_id:
+                raise ValueError("Submitted job belongs to another project")
+            detail = f"Submitted {job.type.value} job {job.id} ({job.status.value})."
+            if job.type == JobType.MESH_GENERATE:
+                settings = job.input["settings"]
+                detail += (
+                    f" Sizes min {settings['min_size']:g}, max {settings['max_size']:g} "
+                    f"in geometry units, {settings['element_family']}."
+                )
+            jobs.append(detail)
+        if jobs:
+            return " ".join(jobs) + " Follow asynchronous execution in Job Monitor."
+        mesh_result = self.mesh_result or self.tools.mesh_result
+        if mesh_result is not None:
+            message = mesh_result.get("error") or mesh_result["message"]
+            if mesh_result.get("clarification_required"):
+                current = mesh_result.get("current_mesh") or {}
+                proposal = mesh_result.get("proposed_mesh") or {}
+                if current.get("min_size") is not None:
+                    message = (
+                        f"Current mesh sizes are {current['min_size']:g}–{current['max_size']:g} "
+                        "in geometry units. " + message
+                    )
+                if proposal:
+                    message += (
+                        f" Proposed sizes are {proposal['min_size']:g}–{proposal['max_size']:g}, "
+                        f"{proposal['element_family']}."
+                    )
+            return message + " No jobs were submitted in this turn."
+        if not self.tools.submitted_job_ids and (
+            re.search(r"\b(submitted|queued|enqueued|scheduled)\b", text, re.IGNORECASE)
+            or (
+                self.composition is not None
+                and "meshing" in self.composition.modules
+                and re.search(
+                    r"\b(remesh|refine|finer|coarser)\b",
+                    self.request.message,
+                    re.IGNORECASE,
+                )
+                and "?" not in self.request.message
+            )
+        ):
+            return "No jobs were submitted in this turn. Please provide or confirm the required mesh settings."
         if text.strip():
             return text
         logger.warning(
@@ -232,14 +294,50 @@ class ChatExecution:
             self.request.request_id,
             len(self.tools.submitted_job_ids),
         )
-        if self.tools.submitted_job_ids:
-            return (
-                "Submitted jobs: "
-                + ", ".join(self.tools.submitted_job_ids)
-                + ". The model did not return a final explanation. "
-                "Check Job Monitor before requesting another submission."
-            )
         return "I couldn't complete a reply. No jobs were submitted. Please try again."
+
+    def submit_mesh(self):
+        arguments = dict(self.mesh_request)
+        if arguments:
+            active = json.loads(self.tools.get_active_geometry())
+            if not active.get("ok"):
+                self.mesh_result = active
+                return
+            geometry = self.tools.geometry.job_manager.get(
+                UUID(active["geometry_job_id"])
+            )
+            units = geometry.input.get("units")
+            scale = {"mm": 1, "cm": 10, "m": 1000, "in": 25.4}
+            if units not in scale:
+                self.mesh_result = {
+                    "error": "Geometry units are unavailable. No jobs were submitted."
+                }
+                return
+            for bound in ("min", "max"):
+                unit = arguments.pop(f"{bound}_unit") or units
+                arguments[f"{bound}_size"] *= scale[unit] / scale[units]
+            pending = json.loads(self.tools.get_pending_remesh()).get(
+                "pending_proposal"
+            )
+            if pending and pending["geometry_job_id"] == str(geometry.id):
+                arguments["element_family"] = pending["element_family"]
+            else:
+                info = json.loads(self.tools.get_active_mesh_info())
+                latest = info.get("latest_completed_mesh") or {}
+                if family := latest.get("settings", {}).get("element_family"):
+                    arguments["element_family"] = family
+        self.composition.invoked.append("generate_mesh")
+        logger.info(
+            "chat_remesh request=%s arguments=%s", self.request.request_id, arguments
+        )
+        self.mesh_result = json.loads(self.tools.generate_mesh(**arguments))
+        logger.info(
+            "chat_remesh_result request=%s ok=%s job_id=%s error=%s",
+            self.request.request_id,
+            self.mesh_result.get("ok"),
+            self.mesh_result.get("job_id"),
+            self.mesh_result.get("error"),
+        )
 
     def finish(self, status, text=None, usage=None):
         if self.finished:
@@ -293,9 +391,13 @@ async def chat(
     if execution.cached:
         return execution.result()
     try:
-        response = await execution.agent.run(
-            execution.messages, options=execution.options
-        )
+        if execution.mesh_request is not None:
+            execution.submit_mesh()
+            response = ChatResponse(message="")
+        else:
+            response = await execution.agent.run(
+                execution.messages, options=execution.options
+            )
         text = execution.response_text(response)
         execution.finish("completed", text, getattr(response, "usage_details", None))
         return ChatResponse(
@@ -338,22 +440,25 @@ async def stream_chat(
                 yield sse_event("done", result.model_dump(mode="json"))
                 return
             yield sse_event("status", {"message": "Analyzing request"})
-            stream = execution.agent.run(
-                execution.messages, stream=True, options=execution.options
-            )
-            async for update in stream:
-                if update.text:
-                    yield sse_event("delta", {"text": update.text})
-                new_jobs = [
-                    j
-                    for j in execution.tools.submitted_job_ids
-                    if j not in reported_jobs
-                ]
-                if new_jobs:
-                    reported_jobs.update(new_jobs)
-                    yield sse_event("jobs", {"job_ids": new_jobs})
-            final = await stream.get_final_response()
+            if execution.mesh_request is not None:
+                execution.submit_mesh()
+                final = ChatResponse(message="")
+            else:
+                stream = execution.agent.run(
+                    execution.messages, stream=True, options=execution.options
+                )
+                async for update in stream:
+                    new_jobs = [
+                        j
+                        for j in execution.tools.submitted_job_ids
+                        if j not in reported_jobs
+                    ]
+                    if new_jobs:
+                        reported_jobs.update(new_jobs)
+                        yield sse_event("jobs", {"job_ids": new_jobs})
+                final = await stream.get_final_response()
             text = execution.response_text(final)
+            yield sse_event("delta", {"text": text})
             execution.finish("completed", text, getattr(final, "usage_details", None))
             remaining = [
                 j for j in execution.tools.submitted_job_ids if j not in reported_jobs

@@ -3,6 +3,7 @@ from __future__ import annotations
 import json
 import math
 from pathlib import Path
+from threading import Lock
 from typing import Annotated, Any, Literal
 from uuid import UUID
 
@@ -48,6 +49,9 @@ class SimulationTools:
         self.proposal_scope = proposal_scope or geometry.project_id
         self.submitted_job_ids: list[str] = []
         self._uploaded_workflows: dict[str, str] = {}
+        self._mesh_submissions: dict[str, str] = {}
+        self._mesh_lock = Lock()
+        self.mesh_result: dict | None = None
 
     @staticmethod
     def _error(message: str, **details: object) -> str:
@@ -335,6 +339,16 @@ class SimulationTools:
         geometry or overwrites old meshes. New change requests belong here;
         confirm_remesh only approves an already persisted proposal.
         """
+        with self._mesh_lock:
+            result = self._generate_mesh(
+                geometry_job_id, dimension, min_size, max_size, element_family
+            )
+            self.mesh_result = json.loads(result)
+            return result
+
+    def _generate_mesh(
+        self, geometry_job_id, dimension, min_size, max_size, element_family
+    ) -> str:
         # Reject unsupported 3D hex before any geometry lookup or job submission.
         if element_family == "hexahedral":
             return self._error(
@@ -414,6 +428,9 @@ class SimulationTools:
                 geometry_artifact_id=UUID(str(artifact_id)),
                 settings=settings,
             )
+            submission_key = request.model_dump_json()
+            if submission_key in self._mesh_submissions:
+                return self._mesh_submissions[submission_key]
             job = self.geometry.job_manager.submit(
                 project_id=self.geometry.project_id,
                 job_type=JobType.MESH_GENERATE,
@@ -426,7 +443,7 @@ class SimulationTools:
         if proposal_store is not None:
             proposal_store.clear(self.proposal_scope)
         self.submitted_job_ids.append(str(job.id))
-        return json.dumps(
+        result = json.dumps(
             {
                 "ok": True,
                 "job_id": str(job.id),
@@ -437,6 +454,8 @@ class SimulationTools:
                 "message": "Mesh generation job submitted",
             }
         )
+        self._mesh_submissions[submission_key] = result
+        return result
 
     def create_geometry_and_mesh(
         self,

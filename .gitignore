@@ -1,29 +1,33 @@
+# Python
 .venv/
 __pycache__/
 *.py[cod]
 .pytest_cache/
 .ruff_cache/
 
+# Environment variables
 .env
 .env.*
 !.env.example
 
+# Node.js / Frontend
 node_modules/
 frontend/dist/
 
-data/projects/
-data/cache/
-
+# IDE
 .vscode/
+
+# Logs
 *.log
 
-# SimAssist runtime data
-/data/*
-!/data/.gitkeep
+# SimAssist runtime data (SQLite, uploads, artifacts, meshes)
+data/
+backend/data/
 
 # Disposable performance fixtures and browser output
 .benchmarks/
 frontend/test-results/
 frontend/playwright-report/
 
-.agents/skills
+# Local agent skills
+.agents/skills/

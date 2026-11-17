@@ -249,6 +249,25 @@ def test_authoritative_context_and_chat_scoped_proposal(engineering):
     assert len(e.manager.list_by_project(e.project)) == before + 1
 
 
+@pytest.mark.parametrize("sizes", [{}, {"min_size": 0.025}, {"max_size": 0.2}])
+def test_missing_bounds_clarify_and_require_confirmation(engineering, sizes):
+    e = engineering
+    response = json.loads(e.services.generate_mesh(**sizes))
+    assert response["clarification_required"]
+    assert response["submitted"] is False
+    assert e.services.submitted_job_ids == []
+    proposal = response["proposed_mesh"]
+    assert proposal["min_size"] == sizes.get("min_size", 0.1)
+    assert proposal["max_size"] == sizes.get("max_size", 0.3)
+    assert not json.loads(e.services.confirm_remesh(False))["ok"]
+    assert e.services.submitted_job_ids == []
+    result = json.loads(e.services.confirm_remesh(True))
+    job = e.manager.get(UUID(result["job_id"]))
+    assert job.type == JobType.MESH_GENERATE
+    assert job.input["settings"]["min_size"] == proposal["min_size"]
+    assert job.input["settings"]["max_size"] == proposal["max_size"]
+
+
 @pytest.mark.parametrize(
     "corruption",
     [

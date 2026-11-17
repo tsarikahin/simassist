@@ -21,7 +21,7 @@ class FakeStream:
         if self.agent.empty:
             return
         yield SimpleNamespace(text="first ")
-        self.agent.tools.submitted_job_ids.append(str(uuid4()))
+        self.agent.submit_geometry()
         if self.agent.fail:
             raise RuntimeError("private provider error")
         yield SimpleNamespace(text="second")
@@ -37,6 +37,13 @@ class FakeAgent:
         self.fail = False
         self.empty = False
         self.inputs = []
+
+    def submit_geometry(self):
+        return json.loads(
+            self.tools.create_geometry(
+                "test", "box", {"length": 1, "width": 1, "height": 1}
+            )
+        )["job_id"]
 
     def run(self, messages, stream=False, options=None):
         self.inputs.append(messages)
@@ -144,7 +151,10 @@ def test_sync_sse_persistence_replay_and_roles(api):
         assert f"event: {event}" in streamed.text
     messages = store.messages(project, chat)
     assert [m["role"] for m in messages] == ["user", "assistant", "user", "assistant"]
-    assert messages[-1]["content"] == "first second"
+    result = json.loads(streamed.text.split("event: done\ndata: ")[1])
+    assert messages[-1]["content"] == result["message"]
+    assert result["submitted_job_ids"][0] in result["message"]
+    assert "geometry.create" in result["message"]
     assert [m.role for m in agents[-1].inputs[0]] == ["user", "assistant", "user"]
     assert all(a.closed for a in agents)
     assert "event: done" in client.post("/api/chat/stream", json=second).text
@@ -209,17 +219,18 @@ def test_empty_model_reply_is_visible_and_does_not_repeat_actions(
 ):
     client, store, project, chat, agents = api
     original = routes.build_simulation_agent
-    job_id = str(uuid4())
+    job_id = None
 
     def empty(**kwargs):
+        nonlocal job_id
         agent = original(**kwargs)
         agent.empty = True
         if submitted:
-            agent.tools.submitted_job_ids.append(job_id)
+            job_id = agent.submit_geometry()
         return agent
 
     monkeypatch.setattr(routes, "build_simulation_agent", empty)
-    request = body(project, chat, "Make it finer")
+    request = body(project, chat, "Refine the existing mesh")
     response = client.post(endpoint, json=request)
     assert response.status_code == 200
     text = store.messages(project, chat)[-1]["content"]
@@ -264,6 +275,60 @@ def test_concurrent_requests_and_interrupted_stream(api):
         assert len(store.messages(project, chat)) == 1
 
     asyncio.run(exercise())
+
+
+@pytest.mark.parametrize("endpoint", ["/api/chat", "/api/chat/stream"])
+@pytest.mark.parametrize("cached", [False, True])
+def test_unverified_queued_response_is_never_published(
+    api, monkeypatch, endpoint, cached
+):
+    client, store, project, chat, _ = api
+    from simassist.jobs.manager import JobManager
+    from simassist.jobs.models import JobType
+    from simassist.jobs.repository import JobRepository
+
+    manager = JobManager(JobRepository(store.db_path))
+    geometry_id = str(manager.submit(project, JobType.GEOMETRY_CREATE, {}).id)
+
+    class FabricatingAgent(FakeAgent):
+        def run(self, messages, stream=False, options=None):
+            text = f"Remesh submitted (queued). Job ID {geometry_id} (mesh.generate)"
+            if stream:
+
+                class Stream:
+                    async def __aiter__(self):
+                        yield SimpleNamespace(text=text)
+
+                    async def get_final_response(self):
+                        return SimpleNamespace(text=text)
+
+                return Stream()
+
+            async def response():
+                return SimpleNamespace(text=text)
+
+            return response()
+
+    monkeypatch.setattr(
+        routes,
+        "build_simulation_agent",
+        lambda **kwargs: FabricatingAgent(kwargs["simulation_tools"]),
+    )
+    request = body(project, chat, "Refine the existing mesh")
+    if cached:
+        store.begin_turn(project, chat, UUID(request["request_id"]), request["message"])
+        store.finish_turn(
+            UUID(request["request_id"]),
+            "completed",
+            f"Queued mesh job {geometry_id}",
+            [],
+        )
+    response = client.post(endpoint, json=request)
+    assert response.status_code == 200
+    assert geometry_id not in response.text
+    assert "No jobs were submitted" in response.text
+    if not cached:
+        assert "No jobs were submitted" in store.messages(project, chat)[-1]["content"]
 
 
 def test_project_mesh_truth_and_chat_local_confirmation(tmp_path):
