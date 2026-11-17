@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
@@ -16,6 +18,13 @@ from simassist.api.routes.mesh_quality import router as mesh_quality_router
 from simassist.api.routes.mesh_versions import router as mesh_versions_router
 from simassist.api.routes.projects import router as projects_router
 from simassist.api.routes.workspace import router as workspace_router
+
+logger = logging.getLogger("simassist")
+logger.setLevel(logging.INFO)
+if not logger.hasHandlers():
+    handler = logging.StreamHandler()
+    handler.setFormatter(logging.Formatter("%(levelname)s %(name)s: %(message)s"))
+    logger.addHandler(handler)
 
 app = FastAPI(
     title="SimAssist API",

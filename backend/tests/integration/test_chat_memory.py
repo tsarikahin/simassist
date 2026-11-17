@@ -99,7 +99,7 @@ def test_chat_model_catalog_configuration(api, monkeypatch):
     monkeypatch.delenv("SIMASSIST_MODEL", raising=False)
     monkeypatch.delenv("SIMASSIST_CHAT_MODELS", raising=False)
     assert client.get("/api/chat/models").json() == {
-        "models": ["qwen3.5-4b", "spark-x2.6-4b"],
+        "models": ["qwen3.5-4b", "spark-x2.6-4b", "google/gemma-4-e2b"],
         "default_model": "spark-x2.6-4b",
     }
     monkeypatch.setenv("SIMASSIST_CHAT_MODELS", " custom-a, custom-b,custom-a, ,")

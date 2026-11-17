@@ -34,7 +34,7 @@ def build_simulation_agent(
         tools=composition.tools
         if composition
         else simulation_agent_tools(simulation_tools),
-        middleware=[ToolTelemetry(composition)] if composition else None,
+        middleware=[ToolTelemetry(composition)],
     )
 
 

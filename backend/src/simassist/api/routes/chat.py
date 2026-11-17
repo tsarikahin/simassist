@@ -35,7 +35,9 @@ class ChatModelsResponse(BaseModel):
 @router.get("/chat/models", response_model=ChatModelsResponse)
 def chat_models() -> ChatModelsResponse:
     default = os.getenv("SIMASSIST_MODEL", "").strip() or "spark-x2.6-4b"
-    configured = os.getenv("SIMASSIST_CHAT_MODELS", "qwen3.5-4b,spark-x2.6-4b")
+    configured = os.getenv(
+        "SIMASSIST_CHAT_MODELS", "qwen3.5-4b,spark-x2.6-4b,google/gemma-4-e2b"
+    )
     models = list(
         dict.fromkeys(item.strip() for item in configured.split(",") if item.strip())
     )
@@ -146,6 +148,7 @@ class ChatExecution:
                 request.project_id, request.chat_id, self.store, context, attachments
             )
             self.composition = compose(request.message, snapshot, self.tools)
+            self.composition.request_id = str(request.request_id)
             assembled = service.build(
                 request.project_id,
                 request.chat_id,

@@ -1,11 +1,14 @@
 """Request composition and metadata; execution stays in the existing chat lifecycle."""
 
+import asyncio
 import json
 import logging
 from dataclasses import dataclass, field
 from time import perf_counter
+from uuid import uuid4
 
 from agent_framework import FunctionMiddleware, tool
+from pydantic import BaseModel
 
 from simassist.conversations.budget import estimate
 
@@ -28,6 +31,7 @@ class AgentComposition:
     setup_ms: float
     invoked: list[str] = field(default_factory=list)
     route_misses: int = 0
+    request_id: str | None = None
 
     def request_capability(self, domain: str) -> str:
         """Report a missing capability and ask the user to clarify; never execute or replay actions."""
@@ -59,13 +63,52 @@ class AgentComposition:
         )
 
 
+def _tool_arguments_preview(arguments: object) -> str:
+    if isinstance(arguments, BaseModel):
+        arguments = arguments.model_dump(mode="json")
+    preview = json.dumps(
+        arguments, default=str, ensure_ascii=True, separators=(",", ":")
+    )
+    return preview if len(preview) <= 500 else preview[:497] + "..."
+
+
 class ToolTelemetry(FunctionMiddleware):
-    def __init__(self, composition: AgentComposition):
+    def __init__(self, composition: AgentComposition | None = None):
         self.composition = composition
 
     async def process(self, context, call_next):
-        self.composition.invoked.append(context.function.name)
-        await call_next()
+        name = context.function.name
+        call_id = uuid4().hex
+        request_id = self.composition.request_id if self.composition else None
+        if self.composition:
+            self.composition.invoked.append(name)
+        started = perf_counter()
+        logger.info(
+            "agent_tool_start request=%s call=%s tool=%s arguments=%s",
+            request_id,
+            call_id,
+            name,
+            _tool_arguments_preview(getattr(context, "arguments", {})),
+        )
+        status, error_type = "completed", None
+        try:
+            await call_next()
+        except asyncio.CancelledError:
+            status, error_type = "cancelled", "CancelledError"
+            raise
+        except Exception as exc:
+            status, error_type = "failed", type(exc).__name__
+            raise
+        finally:
+            logger.info(
+                "agent_tool_end request=%s call=%s tool=%s status=%s duration_ms=%.1f error_type=%s",
+                request_id,
+                call_id,
+                name,
+                status,
+                (perf_counter() - started) * 1000,
+                error_type,
+            )
 
 
 def compose(

@@ -5,12 +5,13 @@ switching models keeps the current conversation history. The browser remembers
 your choice across reloads. The selector is disabled while a response is running.
 
 The backend exposes the choices through `GET /api/chat/models`. By default they
-are `qwen3.5-4b` and `spark-x2.6-4b`, with `spark-x2.6-4b` selected initially.
+are `qwen3.5-4b`, `spark-x2.6-4b`, and `google/gemma-4-e2b`, with
+`spark-x2.6-4b` selected initially.
 
 To change the list, set these variables before starting the backend (PowerShell):
 
 ```powershell
-$env:SIMASSIST_CHAT_MODELS = "qwen3.5-4b,spark-x2.6-4b"
+$env:SIMASSIST_CHAT_MODELS = "qwen3.5-4b,spark-x2.6-4b,google/gemma-4-e2b"
 $env:SIMASSIST_MODEL = "spark-x2.6-4b"
 ```
 
