@@ -1,6 +1,7 @@
 import { useEffect, useRef, useState } from "react";
 import { Maximize2, RotateCcw, RefreshCw, Scan } from "lucide-react";
 import { MeshQualityPanel } from "./MeshQualityPanel";
+import { SelectionPicker } from "../../../components/SelectionPicker";
 import { ViewerScene, type StandardView } from "./ViewerScene";
 import { getGeometryPreview } from "../../../services/previews";
 import { cadSelection, type CadFace } from "../../../services/cadFaces";
@@ -46,6 +47,8 @@ export function SimulationViewer({
   const [cadRevision, setCadRevision] = useState<string | null>(null);
   const [surfaceError, setSurfaceError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"geometry" | "mesh">("geometry");
+  const [showSurfaceInspector, setShowSurfaceInspector] = useState(true);
+  const [showMeshInspector, setShowMeshInspector] = useState(true);
   const [meshRevision, setMeshRevision] = useState(0);
   const [meshVersions, setMeshVersions] = useState<MeshVersion[]>([]);
   const [versionsGeometryId, setVersionsGeometryId] = useState("");
@@ -299,6 +302,8 @@ export function SimulationViewer({
   );
   const currentGeometry = geometry?.artifactId === displayKey ? geometry : null;
   const ready = Boolean(currentGeometry) && !loading;
+  const inspectorVisible = viewMode === "geometry" ? showSurfaceInspector : showMeshInspector;
+  const inspectorName = viewMode === "geometry" ? "Surface Inspector" : "Mesh Inspector";
   const standard = (view: StandardView) => {
     sceneRef.current?.standard(view);
     setParallel(sceneRef.current?.isParallel() ?? false);
@@ -336,24 +341,18 @@ export function SimulationViewer({
           </button>
           {viewMode === "mesh" && (
             <>
-              <select
-                aria-label="Mesh version"
+              <SelectionPicker
+                label="Mesh version"
+                heading="Mesh versions"
+                placeholder={versionsLoading ? "Loading mesh versions..." : "No mesh versions"}
                 value={selectedMeshJobId}
                 disabled={versionsLoading || !meshVersions.length}
-                onChange={(event) => setSelectedMeshJobId(event.target.value)}
-              >
-                {!meshVersions.length && (
-                  <option value="">No mesh versions</option>
-                )}
-                {meshVersions.map((mesh, index) => (
-                  <option key={mesh.job_id} value={mesh.job_id}>
-                    {index === 0
-                      ? "Latest"
-                      : `Version ${meshVersions.length - index}`}{" "}
-                    / {mesh.job_id.slice(0, 8)}
-                  </option>
-                ))}
-              </select>
+                onSelect={setSelectedMeshJobId}
+                options={meshVersions.map((mesh, index) => ({
+                  value: mesh.job_id,
+                  label: `${index === 0 ? "Latest" : `Version ${meshVersions.length - index}`} / ${mesh.job_id.slice(0, 8)}`,
+                }))}
+              />
               <button
                 type="button"
                 aria-label="Refresh mesh"
@@ -379,6 +378,18 @@ export function SimulationViewer({
           )}
         </div>
         <div className="viewer-tools">
+          <button
+            type="button"
+            aria-expanded={inspectorVisible}
+            aria-controls={viewMode === "geometry" ? "surface-inspector" : "mesh-inspector"}
+            disabled={viewMode === "geometry" ? !cadRevision : !geometryJobId}
+            onClick={() => {
+              if (viewMode === "geometry") setShowSurfaceInspector(visible => !visible);
+              else setShowMeshInspector(visible => !visible);
+            }}
+          >
+            {inspectorVisible ? "Hide" : "Show"} {inspectorName}
+          </button>
           <button
             type="button"
             disabled={!ready}
@@ -474,11 +485,11 @@ export function SimulationViewer({
           </div>
         )}
       </div>
-      {cadRevision && (
-        <section className="surface-inspector" aria-label="Surface Inspector" aria-busy={surfaceSaving}>
+      {viewMode === "geometry" && cadRevision && (
+        <section id="surface-inspector" className="surface-inspector" aria-label="Surface Inspector" aria-busy={surfaceSaving} hidden={!showSurfaceInspector}>
           <div className="surface-inspector-heading">
             <strong>Surface Inspector · {surface ? 1 : 0} selected</strong>
-            <button type="button" disabled={!surface || surfaceSaving || viewMode !== "geometry"}
+            <button type="button" disabled={!surface || surfaceSaving}
               onClick={() => sceneRef.current?.onFacePicked?.(cadRevision, null)}>Clear surface selection</button>
           </div>
           <p>Geometry revision: {cadRevision}</p>
@@ -491,7 +502,6 @@ export function SimulationViewer({
             <dt>Bounds (min XYZ → max XYZ)</dt><dd>{surface.bounds.map(v => Number(v.toPrecision(6))).join(", ")} {surface.coordinate_units}</dd>
             <dt>Normal</dt><dd>{surface.normal?.map(v => Number(v.toPrecision(6))).join(", ") ?? "Varies over surface"}. {surface.normal_information}</dd>
           </dl> : <p>Click a CAD surface in Geometry mode to inspect it. No FEM mesh is required.</p>}
-          {viewMode === "mesh" && <p>CAD selection retained. Switch to Geometry to pick or clear a face.</p>}
         </section>
       )}
       {selectionError && (
@@ -500,91 +510,93 @@ export function SimulationViewer({
         </div>
       )}
       {viewMode === "mesh" && (
-        <div
-          aria-label="Mesh statistics"
-          style={{
-            display: "flex",
-            flexWrap: "wrap",
-            gap: 16,
-            padding: "7px 12px",
-            fontSize: 12,
-            color: "#cbd5e1",
-            background: "#111827",
-            borderTop: "1px solid #334155",
-          }}
-        >
-          {versionsLoading && <span>Loading mesh versions...</span>}
-          {versionsError && (
-            <span role="alert" style={{ color: "#fb7185" }}>
-              {versionsError}
-            </span>
-          )}
-          {!versionsLoading && !versionsError && meshVersions.length === 0 && (
-            <span>No completed mesh for this geometry</span>
-          )}
-          {selectedMesh && (
-            <>
-              <span>
-                <strong>Version:</strong> {selectedMesh.job_id.slice(0, 8)}
+        <section id="mesh-inspector" className="mesh-inspector" aria-label="Mesh Inspector" hidden={!showMeshInspector}>
+          <div
+            aria-label="Mesh statistics"
+            style={{
+              display: "flex",
+              flexWrap: "wrap",
+              gap: 16,
+              padding: "7px 12px",
+              fontSize: 12,
+              color: "#cbd5e1",
+              background: "#111827",
+              borderTop: "1px solid #334155",
+            }}
+          >
+            {versionsLoading && <span>Loading mesh versions...</span>}
+            {versionsError && (
+              <span role="alert" style={{ color: "#fb7185" }}>
+                {versionsError}
               </span>
-              <span>
-                <strong>Total nodes:</strong>{" "}
-                {selectedMesh.metadata.node_count?.toLocaleString() ?? "—"}
-              </span>
-              <span>
-                <strong>All elements:</strong>{" "}
-                {selectedMesh.metadata.element_count?.toLocaleString() ?? "—"}
-              </span>
-              <span>
-                <strong>Element family:</strong>{" "}
-                {selectedMesh.settings.element_family ?? "tetrahedral"}
-              </span>
-              <span>
-                <strong>Dimension:</strong>{" "}
-                {selectedMesh.settings.dimension ?? 3}D
-              </span>
-              {(selectedMesh.settings.dimension ?? 3) === 3 && (
+            )}
+            {!versionsLoading && !versionsError && meshVersions.length === 0 && (
+              <span>No completed mesh for this geometry</span>
+            )}
+            {selectedMesh && (
+              <>
                 <span>
-                  <strong>Tetrahedra:</strong>{" "}
-                  {(tetraCount || fallbackTetraCount).toLocaleString()}
+                  <strong>Version:</strong> {selectedMesh.job_id.slice(0, 8)}
                 </span>
-              )}
-              {(selectedMesh.settings.dimension ?? 3) === 2 && (
                 <span>
-                  <strong>Surface cells:</strong>{" "}
-                  {Object.entries(selectedMesh.metadata.element_types ?? {})
-                    .filter(([name]) => /triangle|quadrangle/i.test(name))
-                    .reduce((n, [, v]) => n + v, 0)
-                    .toLocaleString()}
+                  <strong>Total nodes:</strong>{" "}
+                  {selectedMesh.metadata.node_count?.toLocaleString() ?? "—"}
                 </span>
-              )}
-              {(selectedMesh.settings.dimension ?? 3) === 1 && (
                 <span>
-                  <strong>Line cells:</strong>{" "}
-                  {Object.entries(selectedMesh.metadata.element_types ?? {})
-                    .filter(([name]) => /line/i.test(name))
-                    .reduce((n, [, v]) => n + v, 0)
-                    .toLocaleString()}
+                  <strong>All elements:</strong>{" "}
+                  {selectedMesh.metadata.element_count?.toLocaleString() ?? "—"}
                 </span>
-              )}
-              <span>
-                <strong>Size:</strong> {selectedMesh.settings.min_size ?? "?"}–
-                {selectedMesh.settings.max_size ?? "?"}
-              </span>
-              <span>
-                <strong>Versions:</strong> {meshVersions.length}
-              </span>
-            </>
+                <span>
+                  <strong>Element family:</strong>{" "}
+                  {selectedMesh.settings.element_family ?? "tetrahedral"}
+                </span>
+                <span>
+                  <strong>Dimension:</strong>{" "}
+                  {selectedMesh.settings.dimension ?? 3}D
+                </span>
+                {(selectedMesh.settings.dimension ?? 3) === 3 && (
+                  <span>
+                    <strong>Tetrahedra:</strong>{" "}
+                    {(tetraCount || fallbackTetraCount).toLocaleString()}
+                  </span>
+                )}
+                {(selectedMesh.settings.dimension ?? 3) === 2 && (
+                  <span>
+                    <strong>Surface cells:</strong>{" "}
+                    {Object.entries(selectedMesh.metadata.element_types ?? {})
+                      .filter(([name]) => /triangle|quadrangle/i.test(name))
+                      .reduce((n, [, v]) => n + v, 0)
+                      .toLocaleString()}
+                  </span>
+                )}
+                {(selectedMesh.settings.dimension ?? 3) === 1 && (
+                  <span>
+                    <strong>Line cells:</strong>{" "}
+                    {Object.entries(selectedMesh.metadata.element_types ?? {})
+                      .filter(([name]) => /line/i.test(name))
+                      .reduce((n, [, v]) => n + v, 0)
+                      .toLocaleString()}
+                  </span>
+                )}
+                <span>
+                  <strong>Size:</strong> {selectedMesh.settings.min_size ?? "?"}–
+                  {selectedMesh.settings.max_size ?? "?"}
+                </span>
+                <span>
+                  <strong>Versions:</strong> {meshVersions.length}
+                </span>
+              </>
+            )}
+          </div>
+          {geometryJobId && selectedMeshJobId && (
+            <MeshQualityPanel
+              projectId={projectId}
+              geometryJobId={geometryJobId}
+              meshJobId={selectedMeshJobId}
+              revision={meshRevision}
+            />
           )}
-        </div>
-      )}
-      {viewMode === "mesh" && geometryJobId && selectedMeshJobId && (
-        <MeshQualityPanel
-          projectId={projectId}
-          geometryJobId={geometryJobId}
-          meshJobId={selectedMeshJobId}
-          revision={meshRevision}
-        />
+        </section>
       )}
       <div className="viewer-footer">
         <span>

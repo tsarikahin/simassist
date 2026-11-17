@@ -20,6 +20,7 @@ def create_chat_client(config: LLMConfig):
         return OpenAIChatClient(
             model=config.model,
             api_key=key,
+            base_url=config.endpoint,
         )
 
     if config.provider == ProviderType.OPENAI_COMPATIBLE:

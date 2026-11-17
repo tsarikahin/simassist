@@ -2,14 +2,16 @@ import { useEffect, useRef, useState } from "react";
 import { Bot, Send, User, Plus, Pencil, Trash2, Paperclip, X } from "lucide-react";
 import ReactMarkdown from "react-markdown";
 import remarkGfm from "remark-gfm";
+import { ModelPicker } from "./ModelPicker";
 import { uploadProjectFile, type FileAttachment, type UploadedFile } from "../../../services/files";
-import { getChatModels, streamChatMessage } from "../../../services/chat";
+import { getChatModels, streamChatMessage, type LLMSettings } from "../../../services/chat";
 import {
   createChat, deleteChat, getMessages, listChats, renameChat,
   type WorkspaceChat, type StoredMessage,
 } from "../../../services/workspace";
 
 interface AssistantPanelProps {
+  llmSettings: LLMSettings | null;
   projectId: string;
   onJobsSubmitted: (jobIds: string[]) => void;
 }
@@ -17,11 +19,30 @@ interface AssistantPanelProps {
 type Message = StoredMessage;
 type PendingAttachment = { id: string; original: File; progress: number; uploaded?: UploadedFile; error?: string };
 
+type RemoteProvider = "openai" | "openai_compatible";
+type ModelProvider = LLMSettings["provider"] | "default";
+const MODELS_KEY = "simassist.chat.remote-models.v1";
+
+function readSavedModels(): Record<ModelProvider, string[]> {
+  const models: Record<ModelProvider, string[]> = { default: [], lm_studio: [], openai: ["gpt-6-luna"], openai_compatible: [] };
+  try {
+    const saved: unknown = JSON.parse(localStorage.getItem(MODELS_KEY) ?? "null");
+    if (!saved || typeof saved !== "object") return models;
+    for (const provider of ["default", "lm_studio", "openai", "openai_compatible"] as const) {
+      const entries = (saved as Record<string, unknown>)[provider];
+      if (Array.isArray(entries)) {
+        models[provider] = [...new Set([...models[provider], ...entries.filter((item): item is string => typeof item === "string" && !!item.trim())])];
+      }
+    }
+  } catch { /* Use the built-in models when storage is unavailable. */ }
+  return models;
+}
+
 function AttachmentChip({attachment}: {attachment: FileAttachment}) {
   return <span className="attachment-chip"><Paperclip size={13}/><span className="attachment-name">{attachment.filename}</span><span>{attachment.format.toUpperCase()} / {Math.ceil(attachment.size_bytes / 1024)} KB</span></span>;
 }
 
-export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelProps) {
+export function AssistantPanel({ projectId, onJobsSubmitted, llmSettings }: AssistantPanelProps) {
   const [chats, setChats] = useState<WorkspaceChat[]>([]);
   const [chatId, setChatId] = useState("");
   const [messages, setMessages] = useState<Message[]>([]);
@@ -34,6 +55,13 @@ export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelPro
   const [model, setModel] = useState("");
   const [modelError, setModelError] = useState<string | null>(null);
   const [modelsReload, setModelsReload] = useState(0);
+  const [savedModels, setSavedModels] = useState(readSavedModels);
+  const [remoteSelection, setRemoteSelection] = useState<Partial<Record<RemoteProvider, string>>>({});
+  const remoteProvider = llmSettings && llmSettings.provider !== "lm_studio" ? llmSettings.provider : null;
+  const modelProvider = llmSettings?.provider ?? "default";
+  const availableModels = remoteProvider ? savedModels[remoteProvider] : [...new Set([...models, ...savedModels[modelProvider]])];
+  const providerSelection = remoteProvider ? remoteSelection[remoteProvider] : model;
+  const selectedModel = providerSelection && availableModels.includes(providerSelection) ? providerSelection : availableModels[0] ?? "";
   const uploadControllers = useRef(new Map<string, AbortController>());
   const filePicker = useRef<HTMLInputElement>(null);
   const uploading = attachments.some(item => !item.uploaded && !item.error);
@@ -50,8 +78,9 @@ export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelPro
       if (!live) return;
       let saved: string | null = null;
       try { saved = localStorage.getItem("simassist.chat.model"); } catch { /* Storage may be unavailable. */ }
+      const customModels = readSavedModels();
       setModels(result.models);
-      setModel(saved && result.models.includes(saved) ? saved : result.default_model);
+      setModel(saved && [...result.models, ...customModels.default, ...customModels.lm_studio].includes(saved) ? saved : result.default_model);
     }).catch(err => {
       if (live) setModelError(err instanceof Error ? err.message : String(err));
     });
@@ -59,8 +88,25 @@ export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelPro
   }, [modelsReload]);
 
   function selectModel(value: string) {
+    if (remoteProvider) {
+      setRemoteSelection(previous => ({ ...previous, [remoteProvider]: value }));
+      return;
+    }
     setModel(value);
     try { localStorage.setItem("simassist.chat.model", value); } catch { /* Keep the selection in memory. */ }
+  }
+
+  function addModel() {
+    if (loading) return;
+    const name = window.prompt("Enter the model ID accepted by this provider")?.trim();
+    if (!name) return;
+    const updated = {
+      ...savedModels,
+      [modelProvider]: [...new Set([...savedModels[modelProvider], name])],
+    };
+    setSavedModels(updated);
+    selectModel(name);
+    try { localStorage.setItem(MODELS_KEY, JSON.stringify(updated)); } catch { /* Keep custom models in memory. */ }
   }
 
   useEffect(() => {
@@ -168,7 +214,7 @@ export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelPro
 
   async function sendMessage() {
     const content = input.trim();
-    if (!content || !chatId || !model || sending.current || uploading || attachmentErrors) return;
+    if (!content || !chatId || !selectedModel || sending.current || uploading || attachmentErrors) return;
     const sentAttachments = attachments.flatMap(item => item.uploaded ? [item.uploaded] : []);
     setAttachments([]);
     sending.current = true;
@@ -186,7 +232,7 @@ export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelPro
       if (fresh.length) onJobsSubmitted(fresh);
     };
     try {
-      await streamChatMessage({project_id:projectId,chat_id:activeChat,message:content,model,attachments:sentAttachments.map(item => ({file_id:item.file_id}))},{
+      await streamChatMessage({project_id:projectId,chat_id:activeChat,message:content,...(llmSettings ? {llm: {...llmSettings, model: selectedModel}} : {model: selectedModel}),attachments:sentAttachments.map(item => ({file_id:item.file_id}))},{
         onStatus: setStatus,
         onDelta(text) {
           setStatus(null);
@@ -238,14 +284,8 @@ export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelPro
       if (event.dataTransfer.types.includes("Files")) event.preventDefault();
     }} onDrop={event => {event.preventDefault(); attachFiles(event.dataTransfer.files);}}>
       <div className="chat-model-toolbar">
-        <label className="chat-model-picker">
-          <span>Model</span>
-          <select className="workspace-select" aria-label="Chat model" value={model} disabled={loading || !models.length} onChange={event => selectModel(event.target.value)}>
-            {!models.length && <option value="">{modelError ? "Models unavailable" : "Loading models..."}</option>}
-            {models.map(item => <option key={item} value={item}>{item}</option>)}
-          </select>
-        </label>
-        {modelError && <span className="chat-model-error" role="alert">{modelError}. <button type="button" onClick={() => { setModelError(null); setModelsReload(value => value + 1); }}>Retry</button></span>}
+        <ModelPicker models={availableModels} selectedModel={selectedModel} disabled={loading} onSelect={selectModel} onAdd={addModel} />
+        {!remoteProvider && modelError && <span className="chat-model-error" role="alert">{modelError}. <button type="button" onClick={() => { setModelError(null); setModelsReload(value => value + 1); }}>Retry</button></span>}
       </div>
       <input ref={filePicker} type="file" accept=".step,.stp" multiple hidden onChange={event => {
         attachFiles(event.target.files); event.target.value = "";
@@ -266,7 +306,7 @@ export function AssistantPanel({ projectId, onJobsSubmitted }: AssistantPanelPro
         onKeyDown={event => {if(event.key==="Enter"&&!event.shiftKey&&!event.nativeEvent.isComposing){event.preventDefault();void sendMessage();}}}/>
       <button className="chat-attach-button" type="button" title="Attach file" aria-label="Attach file" disabled={loading || !chatId} onClick={() => filePicker.current?.click()}><Paperclip size={17}/></button>
       </div>
-      <button type="button" disabled={loading||uploading||attachmentErrors||!chatId||!model||!input.trim()} onClick={()=>void sendMessage()} aria-label="Send message"><Send size={18}/></button>
+      <button type="button" disabled={loading||uploading||attachmentErrors||!chatId||!selectedModel||!input.trim()} onClick={()=>void sendMessage()} aria-label="Send message"><Send size={18}/></button>
     </div>
     </div>
   </div>;

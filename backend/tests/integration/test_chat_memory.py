@@ -131,10 +131,36 @@ def test_chat_model_selection_is_per_request(api, monkeypatch, endpoint):
     # Switching models keeps the conversation history available.
     assert len(agents[-1].inputs[0]) == 5
     before = store.messages(project, chat)
-    rejected = client.post(endpoint, json={**body(project, chat), "model": "unknown"})
+    rejected = client.post(endpoint, json={**body(project, chat), "model": " "})
     assert rejected.status_code == 422
     assert len(agents) == 3
     assert store.messages(project, chat) == before
+
+
+@pytest.mark.parametrize("endpoint", ["/api/chat", "/api/chat/stream"])
+@pytest.mark.parametrize("provider", ["lm_studio", "openai", "openai_compatible"])
+def test_chat_connection_settings_are_per_request(api, endpoint, provider, caplog):
+    client, store, project, chat, agents = api
+    connection = {
+        "provider": provider,
+        "model": "custom-model",
+        "endpoint": "https://example.com/v1",
+        "api_key": "private-test-key",
+    }
+    request = {**body(project, chat), "llm": connection}
+    with caplog.at_level("INFO", logger="simassist.api.routes.chat"):
+        response = client.post(endpoint, json=request)
+    assert response.status_code == 200
+    assert agents[-1].config.provider == provider
+    assert agents[-1].config.model == connection["model"]
+    assert agents[-1].config.endpoint == connection["endpoint"]
+    assert agents[-1].config.api_key.get_secret_value() == connection["api_key"]
+    assert connection["api_key"] not in response.text
+    assert connection["api_key"] not in caplog.text
+    assert connection["api_key"] not in json.dumps(store.messages(project, chat))
+    assert connection["api_key"] not in routes.ChatRequest(**request).model_dump_json()
+    assert client.post(endpoint, json=body(project, chat)).status_code == 200
+    assert agents[-1].config.provider == "lm_studio"
 
 
 def test_sync_sse_persistence_replay_and_roles(api):

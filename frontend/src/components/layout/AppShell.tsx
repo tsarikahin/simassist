@@ -28,6 +28,9 @@ import {
 import { ProjectExplorer } from "../../features/projects/components/ProjectExplorer";
 import { SimulationViewer } from "../../features/viewer/components/SimulationViewer";
 import { AssistantPanel } from "../../features/assistant/components/AssistantPanel";
+import { LLMSettingsDialog } from "./LLMSettingsDialog";
+import { SelectionPicker } from "../SelectionPicker";
+import type { LLMSettings } from "../../services/chat";
 import { SolverConsole } from "../../features/solver/components/SolverConsole";
 
 import { createProject, deleteProject, listProjects, openDefaultProject, openLegacyProject, renameProject, type WorkspaceProject } from "../../services/workspace";
@@ -133,6 +136,8 @@ function getAvailableWidth(
 let bootPromise: Promise<[WorkspaceProject[], WorkspaceProject]> | null = null;
 
 export function AppShell() {
+  const [llmSettings, setLLMSettings] = useState<LLMSettings | null>(null);
+  const [settingsOpen, setSettingsOpen] = useState(false);
   const [projectId, setProjectId] = useState("");
   const [projects, setProjects] = useState<WorkspaceProject[]>([]);
   const [workspaceError, setWorkspaceError] = useState<string | null>(null);
@@ -625,9 +630,12 @@ export function AppShell() {
             Local Workspace
           </span>
 
-          <Settings2 size={19} />
+          <button type="button" className="llm-settings-button" aria-label="LLM settings" title="LLM settings" onClick={() => setSettingsOpen(true)}>
+            <Settings2 size={19} />
+          </button>
         </div>
       </header>
+      {settingsOpen && <LLMSettingsDialog settings={llmSettings} onApply={setLLMSettings} onClose={() => setSettingsOpen(false)} />}
 
       <main
         ref={workspaceRef}
@@ -641,9 +649,15 @@ export function AppShell() {
           </div>
 
           <div className="workspace-project-switcher">
-            <select className="workspace-select" aria-label="Select project" disabled={projectBusy} value={projectId} onChange={event => switchProject(event.target.value)}>
-              {projects.map(project => <option key={project.id} value={project.id}>{project.name} ({project.id.slice(0, 6)})</option>)}
-            </select>
+            <SelectionPicker
+              options={projects.map(project => ({ value: project.id, label: `${project.name} (${project.id.slice(0, 6)})` }))}
+              value={projectId}
+              label="Select project"
+              heading="Available projects"
+              placeholder="No projects"
+              disabled={projectBusy || !projects.length}
+              onSelect={switchProject}
+            />
             <button type="button" title="Rename project" aria-label="Rename project" disabled={!projectId || projectBusy} onClick={() => {
               setWorkspaceError(null);
               setEditingProjectName(projects.find(project => project.id === projectId)?.name ?? "");
@@ -766,6 +780,7 @@ export function AppShell() {
           </div>
 
           {projectId && <AssistantPanel key={projectId}
+            llmSettings={llmSettings}
             projectId={projectId}
             onJobsSubmitted={handleJobsSubmitted}
           />}

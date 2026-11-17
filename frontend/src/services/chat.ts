@@ -2,12 +2,19 @@
 const API_URL =
   import.meta.env.VITE_API_URL ?? "http://localhost:8000";
 
+export interface LLMSettings {
+  provider: "lm_studio" | "openai" | "openai_compatible";
+  endpoint: string;
+  api_key?: string;
+}
+
 export interface ChatRequest {
   project_id: string;
   chat_id?: string;
   request_id?: string;
   message: string;
   model?: string;
+  llm?: LLMSettings & { model: string };
   attachments?: { file_id: string }[];
 }
 

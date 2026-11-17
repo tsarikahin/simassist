@@ -60,12 +60,15 @@ class ChatRequest(BaseModel):
     message: str = Field(min_length=1, max_length=10000)
     model: str | None = None
     attachments: list[AttachmentReference] = Field(default_factory=list)
+    llm: LLMConfig | None = Field(default=None, exclude=True, repr=False)
 
     @field_validator("model")
     @classmethod
     def validate_model(cls, value: str | None) -> str | None:
-        if value is not None and value not in chat_models().models:
-            raise ValueError("Unknown chat model")
+        if value is not None:
+            value = value.strip()
+            if not value:
+                raise ValueError("Chat model must not be empty")
         return value
 
     @field_validator("attachments")
@@ -89,9 +92,10 @@ def _workspace() -> WorkspaceRepository:
 
 def _llm_config(model: str | None = None) -> LLMConfig:
     return LLMConfig(
-        provider="lm_studio",
+        provider=os.getenv("SIMASSIST_LLM_PROVIDER", "lm_studio"),
         model=model or chat_models().default_model,
-        endpoint=os.getenv("SIMASSIST_LLM_ENDPOINT", "http://127.0.0.1:1235/v1"),
+        endpoint=os.getenv("SIMASSIST_LLM_ENDPOINT"),
+        api_key=os.getenv("OPENAI_API_KEY"),
     )
 
 
@@ -164,7 +168,7 @@ class ChatExecution:
                 self.composition.schemas,
             )
             self.messages = assembled.messages
-            config = _llm_config(request.model)
+            config = request.llm or _llm_config(request.model)
             logger.info(
                 "chat_context project=%s chat=%s request=%s provider=%s model=%s "
                 "turns=%s watermark=%s estimated_tokens=%s budget=%s summary=%s",
