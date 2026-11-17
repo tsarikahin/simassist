@@ -18,6 +18,8 @@ class ProjectContext(BaseModel):
     active_geometry_job_id: UUID | None = None
     active_geometry_artifact_id: UUID | None = None
     selected_mesh_job_id: UUID | None = None
+    selected_cad_revision_id: UUID | None = None
+    selected_cad_face_key: str | None = None
     updated_at: datetime | None = None
 
 
@@ -58,6 +60,9 @@ class ProjectContextRepository:
                 conn.execute(
                     "ALTER TABLE project_context ADD COLUMN selected_mesh_job_id TEXT"
                 )
+            for name in ("selected_cad_revision_id", "selected_cad_face_key"):
+                if name not in columns:
+                    conn.execute(f"ALTER TABLE project_context ADD COLUMN {name} TEXT")
 
     def get(self, project_id: UUID) -> ProjectContext:
         with self._connect() as conn:
@@ -65,7 +70,8 @@ class ProjectContextRepository:
                 """
                 SELECT active_geometry_job_id,
                        active_geometry_artifact_id,
-                       updated_at, selected_mesh_job_id
+                       updated_at, selected_mesh_job_id,
+                       selected_cad_revision_id, selected_cad_face_key
                 FROM project_context
                 WHERE project_id = ?
                 """,
@@ -81,6 +87,8 @@ class ProjectContextRepository:
             active_geometry_artifact_id=(UUID(row[1]) if row[1] else None),
             updated_at=datetime.fromisoformat(row[2]),
             selected_mesh_job_id=UUID(row[3]) if row[3] else None,
+            selected_cad_revision_id=UUID(row[4]) if row[4] else None,
+            selected_cad_face_key=row[5],
         )
 
     def set_active_geometry(
@@ -129,6 +137,12 @@ class ProjectContextRepository:
                     selected_mesh_job_id = CASE
                         WHEN project_context.active_geometry_job_id=excluded.active_geometry_job_id
                         THEN project_context.selected_mesh_job_id ELSE NULL END,
+                    selected_cad_revision_id = CASE
+                        WHEN project_context.active_geometry_artifact_id=excluded.active_geometry_artifact_id
+                        THEN project_context.selected_cad_revision_id ELSE NULL END,
+                    selected_cad_face_key = CASE
+                        WHEN project_context.active_geometry_artifact_id=excluded.active_geometry_artifact_id
+                        THEN project_context.selected_cad_face_key ELSE NULL END,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -185,4 +199,27 @@ class ProjectContextRepository:
                 "UPDATE project_context SET selected_mesh_job_id=?,updated_at=? WHERE project_id=?",
                 (str(mesh_job_id), datetime.now(UTC).isoformat(), str(project_id)),
             )
+        return self.get(project_id)
+
+    def set_cad_selection(
+        self, project_id: UUID, revision_id: UUID, face_key: str | None
+    ) -> ProjectContext:
+        """Compare-and-set after topology validation; geometry changes cannot race a click."""
+        with self._connect() as conn:
+            changed = conn.execute(
+                """UPDATE project_context SET selected_cad_revision_id=?,
+                   selected_cad_face_key=?, updated_at=?
+                   WHERE project_id=? AND active_geometry_artifact_id=?""",
+                (
+                    str(revision_id) if face_key else None,
+                    face_key,
+                    datetime.now(UTC).isoformat(),
+                    str(project_id),
+                    str(revision_id),
+                ),
+            ).rowcount
+            if not changed:
+                raise ValueError(
+                    "Geometry revision is stale; select the active geometry again"
+                )
         return self.get(project_id)

@@ -9,7 +9,7 @@ ALIASES = {
     "geometry": r"\b(geometry|geometries|cad|annulus|disk|box|sphere|cylinder|rectangle|square|primitive|boolean|cut|fuse|intersect|import|circle|ring|cube|ball|line)\b",
     "meshing": r"\b(mesh|meshes|meshing|remesh|refine|finer|coarser|quad|quads|quadrilateral|triangular|tetrahedral|hex|hexahedral|nodes|elements)\b",
     "cad_inspection": r"\b(step|stp|upload|uploaded|attachment|attached|file|files|inspect|inspection|topology|bounds|dimensions|faces|edges)\b",
-    "selections": r"\b(select|selection|selections|pick|highlight|name)\b.{0,55}\b(face|faces|surface|surfaces|region|regions|holes|bolt_holes)\b|\b(use|that|this)\s+(that\s+|this\s+)?face\b|\bnamed (selection|region)s?\b",
+    "selections": r"\b(select|selected|selection|selections|pick|picked|highlight|name)\b.{0,55}\b(face|faces|surface|surfaces|region|regions|holes|bolt_holes)\b|\b(face|faces|surface|surfaces)\b.{0,55}\b(select|selected|pick|picked)\b|\b(use|that|this)\s+(that\s+|this\s+)?(face|surface)\b|\bnamed (selection|region)s?\b|\b(list|inspect)\s+(the\s+)?((active|cad|selected)\s+)?(faces|surfaces)\b",
 }
 UNSUPPORTED = r"\b(solver|solve|simulation|simulate|material|materials|boundary condition|boundary conditions|loads|stress|displacement)\b"
 FOLLOWUP = r"\b(yes|no|keep|same|confirm|cancel|reject|approve|sizes)\b"

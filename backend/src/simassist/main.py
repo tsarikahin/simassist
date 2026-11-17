@@ -4,6 +4,7 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 
 from simassist.api.routes.artifacts import router as artifacts_router
+from simassist.api.routes.cad_faces import router as cad_faces_router
 from simassist.api.routes.chat import router as chat_router
 from simassist.api.routes.engines import router as engines_router
 from simassist.api.routes.files import UploadLimitMiddleware
@@ -52,6 +53,7 @@ app.include_router(mesh_previews_router)
 app.include_router(mesh_versions_router)
 app.include_router(mesh_quality_router)
 app.include_router(chat_router)
+app.include_router(cad_faces_router)
 app.include_router(jobs_events_router)
 app.include_router(projects_router)
 app.include_router(workspace_router)

@@ -208,6 +208,53 @@ class SimulationTools:
         )
         return bool(overrides.get(str(geometry_job_id), {}).get("deleted", 0))
 
+    def _cad_faces(self):
+        from simassist.projects.cad_faces import CadFaceService
+        from simassist.storage.local import LocalArtifactStore
+
+        if self.project_context is None:
+            raise ValueError("Project context is not configured")
+        return CadFaceService(
+            LocalArtifactStore(self.project_context.db_path.parent / "artifacts"),
+            self.project_context,
+        )
+
+    def list_cad_faces(self) -> str:
+        """List authoritative CAD faces of active geometry without an FEM mesh."""
+        try:
+            active = json.loads(self.get_active_geometry())
+            if not active["ok"]:
+                return json.dumps(active)
+            faces = self._cad_faces().faces(
+                self.geometry.project_id, UUID(active["geometry_artifact_id"])
+            )
+            return json.dumps(
+                {"ok": True, "faces": [face.model_dump(mode="json") for face in faces]}
+            )
+        except (KeyError, ValueError, FileNotFoundError) as exc:
+            return self._error(str(exc))
+
+    def inspect_cad_face(self, geometry_revision_id: str, face_key: str) -> str:
+        """Inspect a backend-provided revision and face key. Never guess identifiers."""
+        try:
+            face = self._cad_faces().inspect(
+                self.geometry.project_id, UUID(geometry_revision_id), face_key
+            )
+            return json.dumps({"ok": True, "face": face.model_dump(mode="json")})
+        except (KeyError, ValueError, FileNotFoundError) as exc:
+            return self._error(str(exc))
+
+    def get_selected_cad_face(self) -> str:
+        """Read the current valid viewer selection. Ask for a click when absent or stale."""
+        try:
+            result = self._cad_faces().selection(self.geometry.project_id)
+            face = result["selection"]
+            if face is not None:
+                result["selection"] = face.model_dump(mode="json")
+            return json.dumps(result)
+        except (KeyError, ValueError, FileNotFoundError) as exc:
+            return self._error(str(exc), selection=None, clarification_required=True)
+
     def create_geometry(
         self,
         name: str,

@@ -336,12 +336,12 @@ export function AppShell() {
   // Persist newly completed geometry and show its preview.
   const handleGeometryCompleted = useCallback(
     (previewId: string, geometryJobId: string) => {
-      setPreviewArtifactId(previewId);
       setProjectRevision((revision) => revision + 1);
 
       void setActiveGeometry(projectId, geometryJobId)
         .then(() => {
           setActiveGeometryJobId(geometryJobId);
+            setPreviewArtifactId(previewId);
           setProjectError(null);
         })
         .catch((error: unknown) => {

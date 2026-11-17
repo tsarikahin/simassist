@@ -1,6 +1,8 @@
 import vtkGenericRenderWindow from "@kitware/vtk.js/Rendering/Misc/GenericRenderWindow";
 import vtkActor from "@kitware/vtk.js/Rendering/Core/Actor";
 import vtkMapper from "@kitware/vtk.js/Rendering/Core/Mapper";
+import vtkCellPicker from "@kitware/vtk.js/Rendering/Core/CellPicker";
+import vtkDataArray from "@kitware/vtk.js/Common/Core/DataArray";
 import type vtkCamera from "@kitware/vtk.js/Rendering/Core/Camera";
 import vtkPolyData from "@kitware/vtk.js/Common/DataModel/PolyData";
 import vtkAxesActor from "@kitware/vtk.js/Rendering/Core/AxesActor";
@@ -21,7 +23,10 @@ type Dataset = {
   actor: ReturnType<typeof vtkActor.newInstance>;
   mapper: ReturnType<typeof vtkMapper.newInstance>;
   data: ReturnType<typeof vtkPolyData.newInstance>;
-  preview: Pick<GeometryPreview, "dimension">;
+  preview: GeometryPreview;
+  colors?: ReturnType<typeof vtkDataArray.newInstance>;
+  selected?: string | null;
+  hovered?: string | null;
   camera?: Snapshot;
 };
 export type StandardView = "+X" | "-X" | "+Y" | "-Y" | "+Z" | "-Z";
@@ -70,7 +75,17 @@ export class ViewerScene {
   readonly window = vtkGenericRenderWindow.newInstance({
     background: [0.043, 0.071, 0.125],
   });
-  private readonly axes = vtkAxesActor.newInstance();
+  private readonly axes = vtkAxesActor.newInstance({
+    pickable: false,
+    // Configure at construction: setters schedule an update that can outlive
+    // React Strict Mode's initial mount/cleanup cycle.
+    ...{
+      config: { recenter: false, tipResolution: 16, shaftResolution: 12 },
+      xConfig: { color: [239, 68, 68] },
+      yConfig: { color: [34, 197, 94] },
+      zConfig: { color: [59, 130, 246] },
+    },
+  });
   private readonly marker: ReturnType<
     typeof vtkOrientationMarkerWidget.newInstance
   >;
@@ -82,6 +97,90 @@ export class ViewerScene {
   private frameStart = 0;
   private disposed = false;
   private frameRequest = 0;
+  private hoverRequest = 0;
+  private readonly picker = vtkCellPicker.newInstance({ tolerance: 0.0001 });
+  onFacePicked?: (revision: string, faceKey: string | null) => void;
+  private press: { x: number; y: number; dragged: boolean } | null = null;
+
+  private pickFace(event: PointerEvent): string | null {
+    const entry = this.datasets.get(this.active);
+    if (!entry?.colors) return null;
+    const rect = this.container.getBoundingClientRect();
+    const [width, height] = this.window.getApiSpecificRenderWindow().getSize();
+    this.picker.initializePickList();
+    this.picker.addPickList(entry.actor);
+    this.picker.setPickFromList(true);
+    this.picker.pick([
+      (event.clientX - rect.left) * width / rect.width,
+      (rect.bottom - event.clientY) * height / rect.height,
+      0,
+    ], this.window.getRenderer());
+    const cell = this.picker.getCellId() - (entry.preview.lines?.length ?? 0);
+    return cell >= 0 ? entry.preview.triangle_face_keys?.[cell] ?? null : null;
+  }
+  private pointerDown = (event: PointerEvent) => {
+    if (event.button === 0) {
+      this.container.focus({ preventScroll: true });
+      this.press = { x: event.clientX, y: event.clientY, dragged: false };
+    }
+  };
+  private pointerMove = (event: PointerEvent) => {
+    if (this.press && Math.hypot(event.clientX - this.press.x, event.clientY - this.press.y) > 4)
+      this.press.dragged = true;
+    cancelAnimationFrame(this.hoverRequest);
+    if (event.buttons) return;
+    this.hoverRequest = requestAnimationFrame(() => {
+      const entry = this.datasets.get(this.active);
+      if (!entry?.colors) return;
+      const key = this.pickFace(event);
+      if (entry.hovered === key) return;
+      entry.hovered = key;
+      this.container.style.cursor = key ? "pointer" : "";
+      this.colorFaces(entry);
+    });
+  };
+  private pointerUp = (event: PointerEvent) => {
+    const press = this.press;
+    this.press = null;
+    const entry = this.datasets.get(this.active);
+    if (!press || press.dragged || event.button !== 0 || !entry?.colors ||
+        Math.hypot(event.clientX - press.x, event.clientY - press.y) > 4) return;
+    this.onFacePicked?.(entry.preview.geometry_revision_id!, this.pickFace(event));
+  };
+  private pointerLeave = () => {
+    cancelAnimationFrame(this.hoverRequest);
+    this.press = null;
+    this.container.style.cursor = "";
+    const entry = this.datasets.get(this.active);
+    if (entry?.hovered) { entry.hovered = null; this.colorFaces(entry); }
+  };
+  private keyDown = (event: KeyboardEvent) => {
+    if (event.key === "Escape") {
+      const entry = this.datasets.get(this.active);
+      if (entry?.colors) this.onFacePicked?.(entry.preview.geometry_revision_id!, null);
+    }
+  };
+  selectFace(revision: string, key: string | null) {
+    this.datasets.forEach((entry) => {
+      if (entry.preview.geometry_revision_id === revision && entry.colors) {
+        entry.selected = key;
+        this.colorFaces(entry);
+      }
+    });
+  }
+  private colorFaces(entry: Dataset) {
+    if (!entry.colors) return;
+    const colors = entry.colors.getData();
+    entry.preview.triangle_face_keys!.forEach((key, index) => {
+      const color = key === entry.selected ? [255, 174, 46] : key === entry.hovered ? [102, 224, 216] : [89, 166, 242];
+      colors.set(color, index * 3);
+    });
+    entry.colors.modified();
+    viewerMetric({ kind: "cad-highlight", face_key: entry.selected ?? null,
+      hovered: entry.hovered ?? null,
+      triangle_count: entry.preview.triangle_face_keys!.filter(key => key === entry.selected).length });
+    this.render();
+  }
 
   private container: HTMLDivElement;
   private labels: HTMLDivElement;
@@ -89,16 +188,12 @@ export class ViewerScene {
     this.container = container;
     this.labels = labels;
     this.window.setContainer(container);
+    container.addEventListener("pointerdown", this.pointerDown);
+    container.addEventListener("pointermove", this.pointerMove);
+    container.addEventListener("pointerup", this.pointerUp);
+    container.addEventListener("pointerleave", this.pointerLeave);
+    container.addEventListener("keydown", this.keyDown);
     this.window.resize();
-    this.axes.setConfig({
-      ...this.axes.getConfig(),
-      recenter: false,
-      tipResolution: 16,
-      shaftResolution: 12,
-    });
-    this.axes.setXAxisColor([239, 68, 68]);
-    this.axes.setYAxisColor([34, 197, 94]);
-    this.axes.setZAxisColor([59, 130, 246]);
     this.axes.update();
     this.marker = vtkOrientationMarkerWidget.newInstance({
       actor: this.axes,
@@ -194,6 +289,7 @@ export class ViewerScene {
     this.window.getRenderWindow().render();
   }
   hide() {
+    this.pointerLeave();
     const entry = this.datasets.get(this.active);
     if (entry) {
       entry.camera = snapshot(this.window.getRenderer().getActiveCamera());
@@ -227,8 +323,17 @@ export class ViewerScene {
         data,
         mapper,
         actor,
-        preview: { dimension: preview.dimension },
+        preview,
       };
+      if (preview.geometry_revision_id && preview.triangle_face_keys?.length === preview.triangles.length && preview.faces?.length && !(preview.lines?.length)) {
+        entry.colors = vtkDataArray.newInstance({ name: "CAD face colors", numberOfComponents: 3,
+          values: new Uint8Array(preview.triangles.length * 3) });
+        data.getCellData().setScalars(entry.colors);
+        mapper.setScalarModeToUseCellData();
+        mapper.setColorModeToDirectScalars();
+        mapper.setScalarVisibility(true);
+        this.colorFaces(entry);
+      }
       this.datasets.set(key, entry);
     } else {
       this.datasets.delete(key);
@@ -269,6 +374,7 @@ export class ViewerScene {
     }
   }
   private disposeDataset(entry: Dataset) {
+    entry.colors?.delete();
     entry.actor.delete();
     entry.mapper.delete();
     entry.data.delete();
@@ -336,6 +442,13 @@ export class ViewerScene {
   delete() {
     this.disposed = true;
     cancelAnimationFrame(this.frameRequest);
+    cancelAnimationFrame(this.hoverRequest);
+    this.container.removeEventListener("pointerdown", this.pointerDown);
+    this.container.removeEventListener("pointermove", this.pointerMove);
+    this.container.removeEventListener("pointerup", this.pointerUp);
+    this.container.removeEventListener("pointerleave", this.pointerLeave);
+    this.container.removeEventListener("keydown", this.keyDown);
+    this.picker.delete();
     this.observer.disconnect();
     this.subscriptions.forEach((s) => s.unsubscribe());
     this.marker.setEnabled(false);

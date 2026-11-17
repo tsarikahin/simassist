@@ -9,6 +9,7 @@
     "lint": "oxlint",
     "preview": "vite preview",
     "test:viewer": "node e2e/viewer-controls.mjs",
+    "test:cad-faces": "node e2e/cad-faces.mjs",
     "benchmark:viewer": "node e2e/viewer-benchmark.mjs"
   },
   "dependencies": {

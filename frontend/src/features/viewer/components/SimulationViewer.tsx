@@ -3,6 +3,7 @@ import { Maximize2, RotateCcw, RefreshCw, Scan } from "lucide-react";
 import { MeshQualityPanel } from "./MeshQualityPanel";
 import { ViewerScene, type StandardView } from "./ViewerScene";
 import { getGeometryPreview } from "../../../services/previews";
+import { cadSelection, type CadFace } from "../../../services/cadFaces";
 import {
   listMeshVersions,
   getMeshVersionPreview,
@@ -39,6 +40,11 @@ export function SimulationViewer({
   const labelsRef = useRef<HTMLDivElement>(null);
   const sceneRef = useRef<ViewerScene | null>(null);
   const edgesRef = useRef(false);
+  const selectionQueue = useRef<Promise<unknown>>(Promise.resolve());
+  const [surface, setSurface] = useState<CadFace | null>(null);
+  const [surfaceSaving, setSurfaceSaving] = useState(false);
+  const [cadRevision, setCadRevision] = useState<string | null>(null);
+  const [surfaceError, setSurfaceError] = useState<string | null>(null);
   const [viewMode, setViewMode] = useState<"geometry" | "mesh">("geometry");
   const [meshRevision, setMeshRevision] = useState(0);
   const [meshVersions, setMeshVersions] = useState<MeshVersion[]>([]);
@@ -76,6 +82,12 @@ export function SimulationViewer({
     if (navigation.mode === "mesh" && navigation.meshJobId)
       setSelectedMeshJobId(navigation.meshJobId);
   }, [navigation]);
+
+  useEffect(() => {
+    setSurface(null);
+    setCadRevision(null);
+    setSurfaceError(null);
+  }, [projectId, previewArtifactId]);
 
   useEffect(() => {
     const controller = new AbortController();
@@ -131,13 +143,17 @@ export function SimulationViewer({
     viewMode === "geometry"
       ? (previewArtifactId ?? "")
       : (selectedMesh?.artifact_id ?? "");
+  const displayedGeometryJobId = viewMode === "mesh" ? geometryJobId : undefined;
+  const displayedMeshJobId = viewMode === "mesh" ? selectedMesh?.job_id : undefined;
   useEffect(() => {
     const controller = new AbortController();
     const scene = sceneRef.current;
     if (!scene) return;
+    scene.onFacePicked = undefined;
+    scene.hide();
+    setSurfaceSaving(false);
     setError(null);
     if (!displayKey) {
-      scene.hide();
       setGeometry(null);
       setLoading(false);
       return;
@@ -149,12 +165,12 @@ export function SimulationViewer({
         ? getGeometryPreview(projectId, previewArtifactId!, controller.signal)
         : getMeshVersionPreview(
             projectId,
-            geometryJobId!,
-            selectedMeshJobId,
+            displayedGeometryJobId!,
+            displayedMeshJobId!,
             controller.signal,
           )
     )
-      .then((preview) => {
+      .then(async (preview) => {
         if (disposed) return;
         scene.show(
           preview,
@@ -170,6 +186,52 @@ export function SimulationViewer({
           lineCount: preview.lines?.length ?? 0,
           dimension: preview.dimension ?? 3,
         });
+        if (viewMode === "geometry" && preview.geometry_revision_id) {
+          const revision = preview.geometry_revision_id;
+          setCadRevision(revision);
+          setSurfaceError(null);
+          try {
+            // Wait for previous writes before restoring selection on mode changes.
+            await selectionQueue.current;
+            if (disposed) return;
+            const saved = await cadSelection(projectId, controller.signal);
+            if (disposed) return;
+            const face = saved.selection?.geometry_revision_id === revision ? saved.selection : null;
+            setSurface(face);
+            scene.selectFace(revision, face?.face_key ?? null);
+          } catch (err) {
+            if (disposed) return;
+            setSurface(null);
+            scene.selectFace(revision, null);
+            setSurfaceError(err instanceof Error ? err.message : "Unable to restore CAD selection");
+          }
+          let sequence = 0;
+          scene.onFacePicked = (pickedRevision, faceKey) => {
+            if (disposed || pickedRevision !== revision) return;
+            const current = ++sequence;
+            setSurfaceSaving(true);
+            setSurfaceError(null);
+            // Serialize writes: quick successive clicks must not commit out of order.
+            selectionQueue.current = selectionQueue.current.catch(() => undefined).then(async () => {
+              if (disposed) return;
+              try {
+                const saved = await cadSelection(projectId, undefined, {
+                  geometry_revision_id: revision, face_key: faceKey,
+                });
+                if (disposed || current !== sequence) return;
+                setSurface(saved.selection);
+                scene.selectFace(revision, saved.selection?.face_key ?? null);
+              } catch (err) {
+                if (disposed || current !== sequence) return;
+                setSurface(null);
+                scene.selectFace(revision, null);
+                setSurfaceError(err instanceof Error ? err.message : "Unable to save CAD selection");
+              } finally {
+                if (!disposed && current === sequence) setSurfaceSaving(false);
+              }
+            });
+          };
+        }
       })
       .catch((err: unknown) => {
         if (!disposed) {
@@ -185,16 +247,17 @@ export function SimulationViewer({
       });
     return () => {
       disposed = true;
+      scene.onFacePicked = undefined;
       controller.abort();
     };
     // Camera, edges, quality panels and revision counters never rebuild geometry.
   }, [
     projectId,
     previewArtifactId,
-    geometryJobId,
+    displayedGeometryJobId,
     viewMode,
     displayKey,
-    selectedMeshJobId,
+    displayedMeshJobId,
   ]);
 
   useEffect(() => {
@@ -377,7 +440,8 @@ export function SimulationViewer({
         </button>
       </div>
       <div className="vtk-container">
-        <div ref={containerRef} className="vtk-render-surface" />
+        <div ref={containerRef} className="vtk-render-surface" tabIndex={0}
+          aria-label="3D viewer. Click a CAD face to select; Escape clears selection." />
         <div
           ref={labelsRef}
           className="viewer-axis-labels"
@@ -410,6 +474,26 @@ export function SimulationViewer({
           </div>
         )}
       </div>
+      {cadRevision && (
+        <section className="surface-inspector" aria-label="Surface Inspector" aria-busy={surfaceSaving}>
+          <div className="surface-inspector-heading">
+            <strong>Surface Inspector · {surface ? 1 : 0} selected</strong>
+            <button type="button" disabled={!surface || surfaceSaving || viewMode !== "geometry"}
+              onClick={() => sceneRef.current?.onFacePicked?.(cadRevision, null)}>Clear surface selection</button>
+          </div>
+          <p>Geometry revision: {cadRevision}</p>
+          {surfaceError && <p role="alert">{surfaceError}</p>}
+          {surfaceSaving && <p role="status">Saving surface selection...</p>}
+          {surface ? <dl>
+            <dt>Face ID</dt><dd>{surface.face_key}</dd>
+            <dt>Local Gmsh tag / type</dt><dd>{surface.local_gmsh_tag} / {surface.geometric_type}</dd>
+            <dt>Area</dt><dd>{surface.area.toLocaleString(undefined, { maximumSignificantDigits: 8 })} {surface.area_units}</dd>
+            <dt>Bounds (min XYZ → max XYZ)</dt><dd>{surface.bounds.map(v => Number(v.toPrecision(6))).join(", ")} {surface.coordinate_units}</dd>
+            <dt>Normal</dt><dd>{surface.normal?.map(v => Number(v.toPrecision(6))).join(", ") ?? "Varies over surface"}. {surface.normal_information}</dd>
+          </dl> : <p>Click a CAD surface in Geometry mode to inspect it. No FEM mesh is required.</p>}
+          {viewMode === "mesh" && <p>CAD selection retained. Switch to Geometry to pick or clear a face.</p>}
+        </section>
+      )}
       {selectionError && (
         <div role="alert" className="viewer-selection-error">
           {selectionError}

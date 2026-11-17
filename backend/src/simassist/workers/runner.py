@@ -130,7 +130,9 @@ class SimulationWorker:
                     project_id=job.project_id,
                 )
 
-                preview_artifact_id = preview_service.generate(result.artifact_id)
+                preview_artifact_id = preview_service.generate(
+                    result.artifact_id, coordinate_units=spec.units.value
+                )
 
                 result_payload = result.model_dump(mode="json")
 
