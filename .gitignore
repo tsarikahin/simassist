@@ -25,3 +25,5 @@ data/cache/
 .benchmarks/
 frontend/test-results/
 frontend/playwright-report/
+
+.agents/skills
