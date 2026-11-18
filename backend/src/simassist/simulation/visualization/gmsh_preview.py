@@ -2,7 +2,7 @@ from __future__ import annotations
 
 import math
 from pathlib import Path
-from uuid import UUID, uuid4
+from uuid import UUID, uuid4, uuid5
 
 import gmsh
 from pydantic import BaseModel, Field, computed_field
@@ -36,6 +36,42 @@ class CadFace(BaseModel):
         return self.bounds[3:]
 
 
+class CadEntity(BaseModel):
+    geometry_revision_id: UUID
+    entity_id: UUID
+    entity_key: str
+    dimension: int = Field(ge=0, le=3)
+    tag: int = Field(gt=0)
+    label: str
+    geometric_type: str
+    coordinate_units: str
+    bounds: tuple[float, float, float, float, float, float]
+    coordinates: tuple[float, float, float] | None = None
+    length: float | None = None
+    area: float | None = None
+    volume: float | None = None
+    measure_units: str | None = None
+    normal: tuple[float, float, float] | None = None
+    normal_information: str | None = None
+    boundary_entity_keys: list[str] = Field(default_factory=list)
+    owner_body_keys: list[str] = Field(default_factory=list)
+
+    @computed_field
+    @property
+    def bounds_min_xyz(self) -> tuple[float, float, float]:
+        return self.bounds[:3]
+
+    @computed_field
+    @property
+    def bounds_max_xyz(self) -> tuple[float, float, float]:
+        return self.bounds[3:]
+
+
+def entity_key(revision: UUID, dimension: int, tag: int) -> str:
+    kind = ("vertex", "edge", "face", "body")[dimension]
+    return f"{revision}:{kind}:{tag}"
+
+
 class GeometryPreview(BaseModel):
     points: list[tuple[float, float, float]]
     lines: list[tuple[int, int]] = Field(default_factory=list)
@@ -47,6 +83,12 @@ class GeometryPreview(BaseModel):
     geometry_revision_id: UUID | None = None
     triangle_face_keys: list[str] = Field(default_factory=list)
     faces: list[CadFace] = Field(default_factory=list)
+    topology_version: int = 0
+    entities: list[CadEntity] = Field(default_factory=list)
+    vertex_point_indices: list[int] = Field(default_factory=list)
+    vertex_entity_keys: list[str] = Field(default_factory=list)
+    edge_segments: list[tuple[int, int]] = Field(default_factory=list)
+    edge_entity_keys: list[str] = Field(default_factory=list)
 
 
 class GmshPreviewService:
@@ -123,38 +165,53 @@ class GmshPreviewService:
                 for i in range(0, len(coordinates), 3)
             ]
             tag_to_index = {int(tag): i for i, tag in enumerate(node_tags)}
+            cad_entities = self._inspect_entities(
+                geometry_artifact_id, coordinate_units
+            )
+            vertex_point_indices = []
+            vertex_entity_keys = []
+            edge_segments = []
+            edge_entity_keys = []
+            for entity in cad_entities:
+                if entity.dimension == 0:
+                    tags, _, _ = gmsh.model.mesh.getNodes(0, entity.tag)
+                    if len(tags) == 1 and int(tags[0]) in tag_to_index:
+                        vertex_point_indices.append(tag_to_index[int(tags[0])])
+                        vertex_entity_keys.append(entity.entity_key)
+                elif entity.dimension == 1:
+                    types, _, groups = gmsh.model.mesh.getElements(1, entity.tag)
+                    for cell_type, nodes in zip(types, groups, strict=True):
+                        if int(cell_type) != 1:
+                            raise ValueError("Unsupported CAD edge preview cell type")
+                        for i in range(0, len(nodes), 2):
+                            edge_segments.append(
+                                (
+                                    tag_to_index[int(nodes[i])],
+                                    tag_to_index[int(nodes[i + 1])],
+                                )
+                            )
+                            edge_entity_keys.append(entity.entity_key)
             lines: list[tuple[int, int]] = []
             triangles: list[tuple[int, int, int]] = []
             triangle_face_keys: list[str] = []
             faces: list[CadFace] = []
+            by_key = {entity.entity_key: entity for entity in cad_entities}
             for dim, tag in sorted(gmsh.model.getEntities(min(dimension, 2))):
                 face_key = f"{geometry_artifact_id}:face:{tag}"
                 if dim == 2:
-                    geometric_type = gmsh.model.getType(2, tag)
-                    normal = None
-                    if geometric_type == "Plane":
-                        lower, upper = gmsh.model.getParametrizationBounds(2, tag)
-                        uv = [
-                            (float(a) + float(b)) / 2
-                            for a, b in zip(lower, upper, strict=True)
-                        ]
-                        normal = tuple(float(v) for v in gmsh.model.getNormal(tag, uv))
+                    entity = by_key[face_key]
                     faces.append(
                         CadFace(
                             geometry_revision_id=geometry_artifact_id,
                             face_key=face_key,
                             local_gmsh_tag=tag,
-                            area=gmsh.model.occ.getMass(2, tag),
+                            area=entity.area,
                             coordinate_units=coordinate_units,
-                            area_units=f"{coordinate_units}^2"
-                            if coordinate_units != "unknown"
-                            else "unknown",
-                            bounds=gmsh.model.getBoundingBox(2, tag),
-                            geometric_type=geometric_type,
-                            normal=normal,
-                            normal_information="Constant CAD parametric normal; not guaranteed outward"
-                            if normal
-                            else "Normal varies over curved face; no global normal reported",
+                            area_units=entity.measure_units,
+                            bounds=entity.bounds,
+                            geometric_type=entity.geometric_type,
+                            normal=entity.normal,
+                            normal_information=entity.normal_information,
                         )
                     )
                 before = len(triangles)
@@ -180,6 +237,12 @@ class GmshPreviewService:
                 geometry_revision_id=geometry_artifact_id,
                 triangle_face_keys=triangle_face_keys,
                 faces=faces,
+                topology_version=1,
+                entities=cad_entities,
+                vertex_point_indices=vertex_point_indices,
+                vertex_entity_keys=vertex_entity_keys,
+                edge_segments=edge_segments,
+                edge_entity_keys=edge_entity_keys,
             )
 
         finally:
@@ -197,6 +260,77 @@ class GmshPreviewService:
                 parent_ids=[geometry_artifact_id],
             )
         ).id
+
+    @staticmethod
+    def _inspect_entities(revision: UUID, units: str) -> list[CadEntity]:
+        entities = []
+        for dimension in range(4):
+            for index, (_, tag) in enumerate(
+                sorted(gmsh.model.getEntities(dimension)), 1
+            ):
+                kind = ("Vertex", "Edge", "Face", "Body")[dimension]
+                values = {}
+                if dimension == 0:
+                    values["coordinates"] = tuple(
+                        float(v) for v in gmsh.model.getValue(0, tag, [])
+                    )
+                else:
+                    measure = ("", "length", "area", "volume")[dimension]
+                    values[measure] = float(gmsh.model.occ.getMass(dimension, tag))
+                    values["measure_units"] = (
+                        "unknown"
+                        if units == "unknown"
+                        else units
+                        if dimension == 1
+                        else f"{units}^{dimension}"
+                    )
+                geometric_type = gmsh.model.getType(dimension, tag)
+                if dimension == 2:
+                    if geometric_type == "Plane":
+                        lower, upper = gmsh.model.getParametrizationBounds(2, tag)
+                        uv = [
+                            (float(a) + float(b)) / 2
+                            for a, b in zip(lower, upper, strict=True)
+                        ]
+                        values["normal"] = tuple(
+                            float(v) for v in gmsh.model.getNormal(tag, uv)
+                        )
+                        values["normal_information"] = (
+                            "Constant CAD parametric normal; not guaranteed outward"
+                        )
+                    else:
+                        values["normal_information"] = (
+                            "Normal varies over curved face; no global normal reported"
+                        )
+                boundaries = (
+                    gmsh.model.getBoundary(
+                        [(dimension, tag)], combined=False, oriented=False
+                    )
+                    if dimension
+                    else []
+                )
+                owners = gmsh.model.getAdjacencies(2, tag)[0] if dimension == 2 else []
+                entities.append(
+                    CadEntity(
+                        geometry_revision_id=revision,
+                        entity_id=uuid5(revision, f"{dimension}:{tag}"),
+                        entity_key=entity_key(revision, dimension, tag),
+                        dimension=dimension,
+                        tag=tag,
+                        label=f"{kind} {index}",
+                        geometric_type=geometric_type,
+                        coordinate_units=units,
+                        bounds=gmsh.model.getBoundingBox(dimension, tag),
+                        boundary_entity_keys=sorted(
+                            {entity_key(revision, d, abs(t)) for d, t in boundaries}
+                        ),
+                        owner_body_keys=sorted(
+                            {entity_key(revision, 3, int(t)) for t in owners}
+                        ),
+                        **values,
+                    )
+                )
+        return entities
 
     @staticmethod
     def _append_cells(dimension, element_type, nodes, tag_to_index, lines, triangles):

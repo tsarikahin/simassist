@@ -20,6 +20,8 @@ class ProjectContext(BaseModel):
     selected_mesh_job_id: UUID | None = None
     selected_cad_revision_id: UUID | None = None
     selected_cad_face_key: str | None = None
+    selected_cad_dimension: int | None = None
+    selected_cad_tag: int | None = None
     updated_at: datetime | None = None
 
 
@@ -63,6 +65,21 @@ class ProjectContextRepository:
             for name in ("selected_cad_revision_id", "selected_cad_face_key"):
                 if name not in columns:
                     conn.execute(f"ALTER TABLE project_context ADD COLUMN {name} TEXT")
+            for name in ("selected_cad_dimension", "selected_cad_tag"):
+                if name not in columns:
+                    conn.execute(
+                        f"ALTER TABLE project_context ADD COLUMN {name} INTEGER"
+                    )
+            for project, revision, key in conn.execute(
+                "SELECT project_id,selected_cad_revision_id,selected_cad_face_key FROM project_context "
+                "WHERE selected_cad_face_key IS NOT NULL AND selected_cad_dimension IS NULL"
+            ).fetchall():
+                prefix = f"{revision}:face:"
+                if key.startswith(prefix) and key[len(prefix) :].isdigit():
+                    conn.execute(
+                        "UPDATE project_context SET selected_cad_dimension=2,selected_cad_tag=? WHERE project_id=?",
+                        (int(key[len(prefix) :]), project),
+                    )
 
     def get(self, project_id: UUID) -> ProjectContext:
         with self._connect() as conn:
@@ -71,7 +88,8 @@ class ProjectContextRepository:
                 SELECT active_geometry_job_id,
                        active_geometry_artifact_id,
                        updated_at, selected_mesh_job_id,
-                       selected_cad_revision_id, selected_cad_face_key
+                       selected_cad_revision_id, selected_cad_face_key,
+                       selected_cad_dimension, selected_cad_tag
                 FROM project_context
                 WHERE project_id = ?
                 """,
@@ -89,6 +107,8 @@ class ProjectContextRepository:
             selected_mesh_job_id=UUID(row[3]) if row[3] else None,
             selected_cad_revision_id=UUID(row[4]) if row[4] else None,
             selected_cad_face_key=row[5],
+            selected_cad_dimension=row[6],
+            selected_cad_tag=row[7],
         )
 
     def set_active_geometry(
@@ -143,6 +163,12 @@ class ProjectContextRepository:
                     selected_cad_face_key = CASE
                         WHEN project_context.active_geometry_artifact_id=excluded.active_geometry_artifact_id
                         THEN project_context.selected_cad_face_key ELSE NULL END,
+                    selected_cad_dimension = CASE
+                        WHEN project_context.active_geometry_artifact_id=excluded.active_geometry_artifact_id
+                        THEN project_context.selected_cad_dimension ELSE NULL END,
+                    selected_cad_tag = CASE
+                        WHEN project_context.active_geometry_artifact_id=excluded.active_geometry_artifact_id
+                        THEN project_context.selected_cad_tag ELSE NULL END,
                     updated_at = excluded.updated_at
                 """,
                 (
@@ -204,15 +230,41 @@ class ProjectContextRepository:
     def set_cad_selection(
         self, project_id: UUID, revision_id: UUID, face_key: str | None
     ) -> ProjectContext:
+        prefix = f"{revision_id}:face:"
+        if face_key and (
+            not face_key.startswith(prefix) or not face_key[len(prefix) :].isdigit()
+        ):
+            raise ValueError("Face reference does not belong to this geometry revision")
+        return self.set_entity_selection(
+            project_id,
+            revision_id,
+            2 if face_key else None,
+            int(face_key.rsplit(":", 1)[-1]) if face_key else None,
+        )
+
+    def set_entity_selection(
+        self,
+        project_id: UUID,
+        revision_id: UUID,
+        dimension: int | None,
+        tag: int | None,
+    ) -> ProjectContext:
         """Compare-and-set after topology validation; geometry changes cannot race a click."""
+        if (dimension is None) != (tag is None) or (
+            dimension is not None and (dimension not in range(4) or tag <= 0)
+        ):
+            raise ValueError("Selection requires a CAD dimension and positive tag")
+        face_key = f"{revision_id}:face:{tag}" if dimension == 2 else None
         with self._connect() as conn:
             changed = conn.execute(
                 """UPDATE project_context SET selected_cad_revision_id=?,
-                   selected_cad_face_key=?, updated_at=?
+                   selected_cad_face_key=?, selected_cad_dimension=?, selected_cad_tag=?, updated_at=?
                    WHERE project_id=? AND active_geometry_artifact_id=?""",
                 (
-                    str(revision_id) if face_key else None,
+                    str(revision_id) if tag is not None else None,
                     face_key,
+                    dimension,
+                    tag,
                     datetime.now(UTC).isoformat(),
                     str(project_id),
                     str(revision_id),

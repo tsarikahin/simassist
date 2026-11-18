@@ -1,6 +1,7 @@
 from __future__ import annotations
 
 import json
+import logging
 import math
 from pathlib import Path
 from threading import Lock
@@ -14,6 +15,8 @@ from simassist.core.models.geometry import GeometrySpec, PrimitiveGeometry
 from simassist.core.models.mesh import MeshRequest, MeshSettings
 from simassist.jobs.models import JobType
 from simassist.projects.context import ProjectContextRepository
+
+logger = logging.getLogger(__name__)
 
 PrimitiveName = Literal[
     "line", "square", "rectangle", "disk", "box", "cylinder", "sphere"
@@ -212,13 +215,13 @@ class SimulationTools:
         )
         return bool(overrides.get(str(geometry_job_id), {}).get("deleted", 0))
 
-    def _cad_faces(self):
-        from simassist.projects.cad_faces import CadFaceService
+    def _cad_geometry(self):
+        from simassist.projects.cad_geometry import CadGeometryService
         from simassist.storage.local import LocalArtifactStore
 
         if self.project_context is None:
             raise ValueError("Project context is not configured")
-        return CadFaceService(
+        return CadGeometryService(
             LocalArtifactStore(self.project_context.db_path.parent / "artifacts"),
             self.project_context,
         )
@@ -229,7 +232,7 @@ class SimulationTools:
             active = json.loads(self.get_active_geometry())
             if not active["ok"]:
                 return json.dumps(active)
-            faces = self._cad_faces().faces(
+            faces = self._cad_geometry().faces(
                 self.geometry.project_id, UUID(active["geometry_artifact_id"])
             )
             return json.dumps(
@@ -241,7 +244,7 @@ class SimulationTools:
     def inspect_cad_face(self, geometry_revision_id: str, face_key: str) -> str:
         """Inspect a backend-provided revision and face key. Never guess identifiers."""
         try:
-            face = self._cad_faces().inspect(
+            face = self._cad_geometry().inspect(
                 self.geometry.project_id, UUID(geometry_revision_id), face_key
             )
             return json.dumps({"ok": True, "face": face.model_dump(mode="json")})
@@ -251,12 +254,27 @@ class SimulationTools:
     def get_selected_cad_face(self) -> str:
         """Read the current valid viewer selection. Ask for a click when absent or stale."""
         try:
-            result = self._cad_faces().selection(self.geometry.project_id)
+            result = self._cad_geometry().selection(self.geometry.project_id)
             face = result["selection"]
             if face is not None:
                 result["selection"] = face.model_dump(mode="json")
             return json.dumps(result)
         except (KeyError, ValueError, FileNotFoundError) as exc:
+            return self._error(str(exc), selection=None, clarification_required=True)
+
+    def get_geometry_selection(self) -> str:
+        """Read the current revision-validated CAD vertex, edge, face or body selection."""
+        try:
+            result = self._cad_geometry().entity_selection(self.geometry.project_id)
+            if result["selection"] is not None:
+                result["selection"] = result["selection"].model_dump(mode="json")
+            return json.dumps(result)
+        except (KeyError, ValueError, FileNotFoundError) as exc:
+            logger.warning(
+                "Geometry selection unavailable project=%s error=%s",
+                self.geometry.project_id,
+                exc,
+            )
             return self._error(str(exc), selection=None, clarification_required=True)
 
     def create_geometry(

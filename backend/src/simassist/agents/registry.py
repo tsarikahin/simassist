@@ -139,7 +139,12 @@ REGISTRY = ModuleRegistry(
         AgentModule("cad_inspection", bundle("inspect_uploaded_file")),
         AgentModule(
             "selections",
-            bundle("list_cad_faces", "inspect_cad_face", "get_selected_cad_face"),
+            bundle(
+                "list_cad_faces",
+                "inspect_cad_face",
+                "get_selected_cad_face",
+                "get_geometry_selection",
+            ),
             dependencies=("cad_inspection",),
         ),
         AgentModule(

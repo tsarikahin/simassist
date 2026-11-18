@@ -19,7 +19,7 @@ loads, boundary conditions, materials and solvers remain outside this phase.
   also exposed for agent use. OCC bounds can include small tolerance margins.
 - Planes expose a constant CAD parametric normal, explicitly not guaranteed
   outward. Curved faces report varying normals and no misleading global vector.
-- `CadFaceService` validates project ownership, artifact type, active completed
+- `CadGeometryService` validates project ownership, artifact type, active completed
   geometry job, revision and face membership. Invalid/stale references return
   HTTP 409; missing/cross-project artifacts return HTTP 404. Selection writes
   compare the active revision inside the database update to reject stale clicks.
@@ -125,8 +125,8 @@ and frontend port 4175, with the existing 120k-tetra fixture available.
 | Area | Files |
 | --- | --- |
 | Preview provenance and metadata | `backend/src/simassist/simulation/visualization/gmsh_preview.py`, `backend/src/simassist/workers/runner.py` |
-| Validation and persistence | `backend/src/simassist/projects/cad_faces.py`, `backend/src/simassist/projects/context.py` |
-| HTTP routes | `backend/src/simassist/api/routes/cad_faces.py`, `backend/src/simassist/main.py` |
+| Validation and persistence | `backend/src/simassist/projects/cad_geometry.py`, `backend/src/simassist/projects/context.py` |
+| HTTP routes | `backend/src/simassist/api/routes/cad_geometry.py`, `backend/src/simassist/main.py` |
 | Agent integration | `backend/src/simassist/agents/tools/simulation_tools.py`, `backend/src/simassist/agents/registry.py`, `backend/src/simassist/agents/router.py`, `backend/src/simassist/agents/modules/selections/instructions.md` |
 | Viewer and inspector | `frontend/src/features/viewer/components/ViewerScene.ts`, `frontend/src/features/viewer/components/SimulationViewer.tsx`, `frontend/src/styles/workspace.css` |
 | Frontend requests and activation ordering | `frontend/src/services/cadFaces.ts`, `frontend/src/services/previews.ts`, `frontend/src/components/layout/AppShell.tsx` |
